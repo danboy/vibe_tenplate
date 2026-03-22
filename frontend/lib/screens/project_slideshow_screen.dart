@@ -1,0 +1,1941 @@
+import 'dart:convert';
+import 'dart:math';
+import 'dart:ui' show PointMode;
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import '../models/group.dart';
+import '../models/project.dart';
+import '../models/sticky_note.dart';
+import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
+
+class ProjectSlideshowScreen extends StatefulWidget {
+  final String groupSlug;
+  final String projectSlug;
+
+  const ProjectSlideshowScreen({
+    super.key,
+    required this.groupSlug,
+    required this.projectSlug,
+  });
+
+  @override
+  State<ProjectSlideshowScreen> createState() =>
+      _ProjectSlideshowScreenState();
+}
+
+class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
+  WebSocketChannel? _channel;
+  List<StickyNote> _notes = [];
+  bool _connected = false;
+  final _rng = Random();
+  Project? _project;
+  Group? _group;
+
+  // 0 = brainstorm, 1 = group
+  int _slide = 0;
+
+  // Viewport state
+  Offset _offset = Offset.zero;
+  double _scale = 1.0;
+
+  // Gesture tracking
+  Offset _gestureStartOffset = Offset.zero;
+  double _gestureStartScale = 1.0;
+  Offset _gestureStartFocal = Offset.zero;
+  bool _isDraggingNote = false;
+
+  // Per-group drag offsets so all members move together in real-time.
+  final Map<String, Offset> _groupDragOffsets = {};
+
+  // Matrix positions for slide 2: normalized (dx=cost 0-1, dy=value 0-1, 1=high)
+  final Map<String, Offset> _matrixPositions = {};
+  // noteID → userID of whoever is currently dragging that item
+  final Map<String, String> _matrixLockedBy = {};
+
+  void _onMatrixPositionChanged(String id, Offset normalized) {
+    setState(() => _matrixPositions[id] = normalized);
+    _send('matrix_move', {'id': id, 'cost': normalized.dx, 'value': normalized.dy});
+  }
+
+  void _onMatrixDragStart(String id) {
+    _send('matrix_drag_start', {'id': id});
+  }
+
+  void _onMatrixDragEnd(String id) {
+    _send('matrix_drag_end', {'id': id});
+  }
+
+  void _onGroupDragUpdate(String groupId, double dx, double dy) {
+    setState(() {
+      final c = _groupDragOffsets[groupId] ?? Offset.zero;
+      _groupDragOffsets[groupId] = Offset(c.dx + dx, c.dy + dy);
+    });
+  }
+
+  void _onGroupDragEnd(String groupId) {
+    setState(() => _groupDragOffsets.remove(groupId));
+  }
+
+  bool _viewportInitialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_viewportInitialized) {
+      final size = MediaQuery.of(context).size;
+      _offset = Offset(size.width / 2, size.height / 2);
+      _viewportInitialized = true;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAndConnect();
+  }
+
+  Future<void> _loadAndConnect() async {
+    try {
+      final api = context.read<AuthProvider>().api;
+      final results = await Future.wait([
+        api.getProject(groupSlug: widget.groupSlug, projectSlug: widget.projectSlug),
+        api.getGroup(widget.groupSlug),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _project = results[0] as Project;
+        _group = results[1] as Group;
+      });
+      _connect(_project!.id);
+    } catch (_) {}
+  }
+
+  bool get _isPresenter {
+    final userId = context.read<AuthProvider>().user?.id;
+    if (userId == null || _project == null) return false;
+    if (_project!.presenterId != null) return userId == _project!.presenterId;
+    return userId == _project!.createdBy;
+  }
+
+  bool get _canAssignPresenter {
+    final userId = context.read<AuthProvider>().user?.id;
+    if (userId == null || _project == null) return false;
+    return userId == _project!.createdBy || userId == _group?.ownerId;
+  }
+
+  void _connect(String projectId) {
+    final token = context.read<AuthProvider>().token;
+    final uri = Uri.parse(
+        '${ApiService.wsBaseUrl}/ws/projects/$projectId?token=$token');
+    _channel = WebSocketChannel.connect(uri);
+    setState(() => _connected = true);
+    _channel!.stream.listen(
+      _handleMessage,
+      onDone: () => setState(() => _connected = false),
+      onError: (_) => setState(() => _connected = false),
+    );
+  }
+
+  void _handleMessage(dynamic data) {
+    final msg = jsonDecode(data as String) as Map<String, dynamic>;
+    final type = msg['type'] as String;
+    final payload = msg['payload'];
+
+    setState(() {
+      switch (type) {
+        case 'init':
+          final p = payload as Map<String, dynamic>;
+          final list = (p['notes'] as List? ?? []);
+          _notes = list
+              .map((n) => StickyNote.fromJson(n as Map<String, dynamic>))
+              .toList();
+          _slide = (p['slide'] as int?) ?? 0;
+          _matrixPositions.clear();
+          for (final note in _notes) {
+            if (note.matrixCost != null && note.matrixValue != null) {
+              _matrixPositions[note.id] =
+                  Offset(note.matrixCost!, note.matrixValue!);
+            }
+          }
+
+        case 'note_create':
+          _notes.add(StickyNote.fromJson(payload as Map<String, dynamic>));
+
+        case 'note_move':
+          final id = payload['id'] as String;
+          final idx = _notes.indexWhere((n) => n.id == id);
+          if (idx != -1) {
+            _notes[idx] = _notes[idx].copyWith(
+              posX: (payload['pos_x'] as num).toDouble(),
+              posY: (payload['pos_y'] as num).toDouble(),
+            );
+          }
+
+        case 'note_update':
+          final id = payload['id'] as String;
+          final idx = _notes.indexWhere((n) => n.id == id);
+          if (idx != -1) {
+            _notes[idx] = _notes[idx].copyWith(
+              content: payload['content'] as String,
+            );
+          }
+
+        case 'note_delete':
+          _notes.removeWhere((n) => n.id == payload['id'] as String);
+
+        case 'note_group':
+          final id = payload['id'] as String;
+          final parentId = payload['parent_id'] as String?;
+          final idx = _notes.indexWhere((n) => n.id == id);
+          if (idx != -1) {
+            _notes[idx] = parentId == null
+                ? _notes[idx].copyWith(clearParent: true)
+                : _notes[idx].copyWith(parentId: parentId);
+          }
+
+        case 'matrix_drag_start':
+          _matrixLockedBy[payload['id'] as String] =
+              payload['user_id'] as String;
+
+        case 'matrix_drag_end':
+          _matrixLockedBy.remove(payload['id'] as String);
+
+        case 'matrix_move':
+          final id = payload['id'] as String;
+          _matrixPositions[id] = Offset(
+            (payload['cost'] as num).toDouble(),
+            (payload['value'] as num).toDouble(),
+          );
+
+        case 'slide_change':
+          _slide = payload['slide'] as int;
+
+        case 'presenter_change':
+          if (_project != null) {
+            final pid = payload['presenter_id'] as String?;
+            final pname = payload['presenter_username'] as String?;
+            _project = pid == null
+                ? _project!.copyWith(clearPresenter: true)
+                : _project!.copyWith(presenterId: pid, presenterUsername: pname);
+          }
+      }
+    });
+  }
+
+  void _send(String type, Map<String, dynamic> payload) {
+    _channel?.sink.add(jsonEncode({'type': type, 'payload': payload}));
+  }
+
+  void _moveNote(String id, double worldX, double worldY) {
+    final idx = _notes.indexWhere((n) => n.id == id);
+    if (idx == -1) return;
+    final note = _notes[idx];
+
+    if (note.isGroup) {
+      // Dragging the group parent moves the whole group.
+      final dx = worldX - note.posX;
+      final dy = worldY - note.posY;
+      setState(() {
+        for (int i = 0; i < _notes.length; i++) {
+          final n = _notes[i];
+          if (n.id == id || n.parentId == id) {
+            _notes[i] = n.copyWith(
+              posX: n.id == id ? worldX : n.posX + dx,
+              posY: n.id == id ? worldY : n.posY + dy,
+            );
+          }
+        }
+      });
+      for (final m in _notes.where((n) => n.id == id || n.parentId == id)) {
+        _send('note_move', {'id': m.id, 'pos_x': m.posX, 'pos_y': m.posY});
+      }
+    } else {
+      // Child or ungrouped note moves independently.
+      _send('note_move', {'id': id, 'pos_x': worldX, 'pos_y': worldY});
+    }
+  }
+
+  void _ungroupNote(String id) {
+    _send('note_ungroup', {'id': id});
+  }
+
+  void _deleteNote(String id) {
+    _send('note_delete', {'id': id});
+  }
+
+  void _updateNote(String id, String content) {
+    _send('note_update', {'id': id, 'content': content});
+  }
+
+  void _groupNotes(String draggedId, String targetId) {
+    _send('note_group', {'dragged_id': draggedId, 'target_id': targetId});
+  }
+
+  void _changeSlide(int i) {
+    if (!_isPresenter) return;
+    setState(() => _slide = i);
+    _send('slide_change', {'slide': i});
+    if (i == 0 || i == 1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _centerView();
+      });
+    }
+  }
+
+  Future<void> _showSetPresenterDialog() async {
+    if (_group == null || _project == null) return;
+    final members = _group!.members;
+    String? selected = _project!.presenterId;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Set Presenter'),
+          content: SizedBox(
+            width: 320,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<String?>(
+                  title: Text(_project!.creatorUsername != null
+                      ? '${_project!.creatorUsername} (creator)'
+                      : 'Project creator (default)'),
+                  value: null,
+                  groupValue: selected,
+                  onChanged: (v) => setLocal(() => selected = v),
+                ),
+                ...members.map((m) => RadioListTile<String?>(
+                      title: Text(m.username),
+                      subtitle: Text(m.email,
+                          style: const TextStyle(fontSize: 11)),
+                      value: m.id,
+                      groupValue: selected,
+                      onChanged: (v) => setLocal(() => selected = v),
+                    )),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Confirm')),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    try {
+      final api = context.read<AuthProvider>().api;
+      final updated = await api.setPresenter(
+        groupSlug: widget.groupSlug,
+        projectSlug: widget.projectSlug,
+        userId: selected,
+      );
+      setState(() => _project = updated);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  void _centerView() {
+    final size = MediaQuery.of(context).size;
+    if (_notes.isEmpty) {
+      setState(() {
+        _scale = 1.0;
+        _offset = Offset(size.width / 2, size.height / 2);
+      });
+      return;
+    }
+
+    const padding = 48.0;
+    double minX = _notes.first.posX;
+    double maxX = _notes.first.posX + _noteWidth;
+    double minY = _notes.first.posY;
+    double maxY = _notes.first.posY + _noteMinHeight;
+
+    for (final note in _notes) {
+      minX = min(minX, note.posX);
+      maxX = max(maxX, note.posX + _noteWidth);
+      minY = min(minY, note.posY);
+      maxY = max(maxY, note.posY + _noteMinHeight);
+    }
+
+    final worldW = maxX - minX;
+    final worldH = maxY - minY;
+    final scaleX = (size.width - padding * 2) / worldW;
+    final scaleY = (size.height - kToolbarHeight - padding * 2) / worldH;
+    final newScale = min(scaleX, scaleY).clamp(0.05, 8.0);
+    final worldCx = (minX + maxX) / 2;
+    final worldCy = (minY + maxY) / 2;
+
+    setState(() {
+      _scale = newScale;
+      _offset = Offset(
+        size.width / 2 - worldCx * newScale,
+        size.height / 2 - worldCy * newScale,
+      );
+    });
+  }
+
+  Offset get _worldCenter {
+    final size = MediaQuery.of(context).size;
+    return (Offset(size.width / 2, size.height / 2) - _offset) / _scale;
+  }
+
+  Future<void> _showAddNoteDialog() async {
+    final contentCtrl = TextEditingController();
+    String selectedColor = _noteColors.first;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('New Sticky Note'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: contentCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'What\'s on your mind?',
+                ),
+                maxLines: 4,
+                autofocus: true,
+              ),
+              const SizedBox(height: 16),
+              const Text('Colour', style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 8),
+              Row(
+                children: _noteColors.map((c) {
+                  final selected = c == selectedColor;
+                  return GestureDetector(
+                    onTap: () => setLocal(() => selectedColor = c),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      margin: const EdgeInsets.only(right: 8),
+                      width: selected ? 34 : 28,
+                      height: selected ? 34 : 28,
+                      decoration: BoxDecoration(
+                        color: _hexColor(c),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color:
+                              selected ? Colors.black87 : Colors.transparent,
+                          width: 2.5,
+                        ),
+                        boxShadow: selected
+                            ? [
+                                const BoxShadow(
+                                    blurRadius: 4, color: Colors.black26)
+                              ]
+                            : null,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (contentCtrl.text.trim().isNotEmpty) {
+                  Navigator.pop(ctx, true);
+                }
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final center = _worldCenter;
+      final posX = center.dx + (_rng.nextDouble() - 0.5) * 200;
+      final posY = center.dy + (_rng.nextDouble() - 0.5) * 200;
+      _send('note_create', {
+        'content': contentCtrl.text.trim(),
+        'color': selectedColor,
+        'pos_x': posX,
+        'pos_y': posY,
+      });
+    }
+  }
+
+  void _onScaleStart(ScaleStartDetails d) {
+    _gestureStartOffset = _offset;
+    _gestureStartScale = _scale;
+    _gestureStartFocal = d.focalPoint;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails d) {
+    if (_isDraggingNote) return;
+    setState(() {
+      final newScale = (_gestureStartScale * d.scale).clamp(0.05, 8.0);
+      final focalWorld =
+          (_gestureStartFocal - _gestureStartOffset) / _gestureStartScale;
+      _offset = d.focalPoint - focalWorld * newScale;
+      _scale = newScale;
+    });
+  }
+
+  void _onPointerSignal(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent) return;
+    final zoomFactor = e.scrollDelta.dy > 0 ? 0.9 : 1.1;
+    setState(() {
+      final newScale = (_scale * zoomFactor).clamp(0.05, 8.0);
+      final focalWorld = (e.localPosition - _offset) / _scale;
+      _offset = e.localPosition - focalWorld * newScale;
+      _scale = newScale;
+    });
+  }
+
+  StickyNote? _findOverlap(String excludeId, double worldX, double worldY) {
+    final cx = worldX + _noteWidth / 2;
+    final cy = worldY + _noteMinHeight / 2;
+    for (final note in _notes) {
+      if (note.id == excludeId) continue;
+      if (cx >= note.posX &&
+          cx <= note.posX + _noteWidth &&
+          cy >= note.posY &&
+          cy <= note.posY + _noteMinHeight) {
+        return note;
+      }
+    }
+    return null;
+  }
+
+  @override
+  void dispose() {
+    _channel?.sink.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isGroupingMode = _slide == 1;
+    final isCostValueMode = _slide == 2;
+    final isPresenter = _isPresenter;
+    final canAssign = _canAssignPresenter;
+    final presenterLabel = _project?.presenterUsername
+        ?? _project?.creatorUsername
+        ?? '';
+
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back',
+          onPressed: () => context.go('/groups/${widget.groupSlug}'),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_project?.name ?? '…'),
+            if (presenterLabel.isNotEmpty)
+              Text(
+                isPresenter ? 'You are presenting' : 'Presenter: $presenterLabel',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: isPresenter
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+          ],
+        ),
+        actions: [
+          if (canAssign)
+            IconButton(
+              icon: const Icon(Icons.switch_account_outlined),
+              tooltip: 'Set presenter',
+              onPressed: _showSetPresenterDialog,
+            ),
+          IconButton(
+            icon: const Icon(Icons.center_focus_strong_outlined),
+            tooltip: 'Center view',
+            onPressed: _centerView,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Tooltip(
+              message: _connected ? 'Connected' : 'Disconnected',
+              child: Icon(
+                _connected ? Icons.wifi : Icons.wifi_off,
+                color: _connected ? Colors.green : Colors.red,
+                size: 20,
+              ),
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: (_slide != 0 || !isPresenter)
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _showAddNoteDialog,
+              icon: const Icon(Icons.add),
+              label: const Text('Add Note'),
+            ),
+      body: Column(
+        children: [
+          _SlideTabBar(
+            currentSlide: _slide,
+            enabled: isPresenter,
+            onSlideChanged: _changeSlide,
+          ),
+          Expanded(
+            child: isCostValueMode
+                ? _CostValueMatrix(
+                    notes: _notes,
+                    positions: _matrixPositions,
+                    lockedBy: _matrixLockedBy,
+                    currentUserId:
+                        context.read<AuthProvider>().user?.id ?? '',
+                    onPositionChanged: _onMatrixPositionChanged,
+                    onDragStart: _onMatrixDragStart,
+                    onDragEnd: _onMatrixDragEnd,
+                  )
+                : ClipRect(
+                    child: Listener(
+                      onPointerSignal: _onPointerSignal,
+                      child: GestureDetector(
+                        onScaleStart: _onScaleStart,
+                        onScaleUpdate: _onScaleUpdate,
+                        child: _InfiniteCanvas(
+                          notes: _notes,
+                          offset: _offset,
+                          scale: _scale,
+                          isGroupingMode: isGroupingMode,
+                          groupDragOffsets: _groupDragOffsets,
+                          onNoteMove: _moveNote,
+                          onNoteDelete: _deleteNote,
+                          onNoteUpdate: _updateNote,
+                          onGroupNotes: _groupNotes,
+                          onUngroupNote: _ungroupNote,
+                          onFindOverlap: _findOverlap,
+                          onGroupDragUpdate: _onGroupDragUpdate,
+                          onGroupDragEnd: _onGroupDragEnd,
+                          onNoteDragStart: () =>
+                              setState(() => _isDraggingNote = true),
+                          onNoteDragEnd: () =>
+                              setState(() => _isDraggingNote = false),
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Slide tab bar ────────────────────────────────────────────────────────────
+
+const _slideLabels = ['Brainstorm', 'Group', 'Prioritise'];
+const _slideIcons = [Icons.sticky_note_2_outlined, Icons.hub_outlined, Icons.grid_view_outlined];
+const _slideCount = 3;
+
+class _SlideTabBar extends StatelessWidget {
+  final int currentSlide;
+  final bool enabled;
+  final void Function(int) onSlideChanged;
+
+  const _SlideTabBar({
+    required this.currentSlide,
+    required this.enabled,
+    required this.onSlideChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final canPrev = enabled && currentSlide > 0;
+    final canNext = enabled && currentSlide < _slideCount - 1;
+
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: theme.colorScheme.outline)),
+      ),
+      child: Row(
+        children: [
+          // Prev arrow
+          _NavArrow(
+            icon: Icons.chevron_left,
+            enabled: canPrev,
+            onTap: canPrev ? () => onSlideChanged(currentSlide - 1) : null,
+          ),
+          const SizedBox(width: 4),
+          // Slide tabs
+          ...List.generate(_slideCount, (i) {
+            final widgets = <Widget>[
+              _SlideTab(
+                label: _slideLabels[i],
+                icon: _slideIcons[i],
+                selected: currentSlide == i,
+                onTap: enabled ? () => onSlideChanged(i) : null,
+              ),
+            ];
+            if (i < _slideCount - 1) {
+              widgets.add(Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Icon(Icons.chevron_right,
+                    size: 14, color: Colors.grey[400]),
+              ));
+            }
+            return widgets;
+          }).expand((w) => w),
+          const Spacer(),
+          // Slide counter
+          Text(
+            '${currentSlide + 1} / $_slideCount',
+            style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+          ),
+          const SizedBox(width: 4),
+          // Next arrow
+          _NavArrow(
+            icon: Icons.chevron_right,
+            enabled: canNext,
+            onTap: canNext ? () => onSlideChanged(currentSlide + 1) : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NavArrow extends StatelessWidget {
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  const _NavArrow({required this.icon, required this.enabled, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 150),
+        opacity: enabled ? 1.0 : 0.3,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: enabled ? const Color(0xFFEEF0F4) : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Icon(icon, size: 16, color: const Color(0xFF555555)),
+        ),
+      ),
+    );
+  }
+}
+
+class _SlideTab extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  const _SlideTab({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected
+              ? theme.colorScheme.primaryContainer
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon,
+                size: 14,
+                color: selected
+                    ? theme.colorScheme.primary
+                    : const Color(0xFF888888)),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight:
+                    selected ? FontWeight.w600 : FontWeight.w400,
+                color: selected
+                    ? theme.colorScheme.primary
+                    : const Color(0xFF888888),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Infinite canvas ──────────────────────────────────────────────────────────
+
+class _InfiniteCanvas extends StatelessWidget {
+  final List<StickyNote> notes;
+  final Offset offset;
+  final double scale;
+  final bool isGroupingMode;
+  final Map<String, Offset> groupDragOffsets;
+  final void Function(String id, double worldX, double worldY) onNoteMove;
+  final void Function(String id) onNoteDelete;
+  final void Function(String id, String content) onNoteUpdate;
+  final void Function(String draggedId, String targetId) onGroupNotes;
+  final void Function(String id) onUngroupNote;
+  final StickyNote? Function(String excludeId, double worldX, double worldY)
+      onFindOverlap;
+  final void Function(String groupId, double dx, double dy) onGroupDragUpdate;
+  final void Function(String groupId) onGroupDragEnd;
+  final VoidCallback onNoteDragStart;
+  final VoidCallback onNoteDragEnd;
+
+  const _InfiniteCanvas({
+    required this.notes,
+    required this.offset,
+    required this.scale,
+    required this.isGroupingMode,
+    required this.groupDragOffsets,
+    required this.onNoteMove,
+    required this.onNoteDelete,
+    required this.onNoteUpdate,
+    required this.onGroupNotes,
+    required this.onUngroupNote,
+    required this.onFindOverlap,
+    required this.onGroupDragUpdate,
+    required this.onGroupDragEnd,
+    required this.onNoteDragStart,
+    required this.onNoteDragEnd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = Size(constraints.maxWidth, constraints.maxHeight);
+        return Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            Positioned.fill(
+              child: CustomPaint(
+                painter:
+                    _InfiniteGridPainter(offset: offset, scale: scale),
+              ),
+            ),
+            if (isGroupingMode)
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _GroupBackgroundPainter(
+                      notes: notes, offset: offset, scale: scale),
+                ),
+              ),
+            if (notes.isEmpty)
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.sticky_note_2_outlined,
+                        size: 72, color: Colors.grey[400]),
+                    const SizedBox(height: 16),
+                    Text(
+                        isGroupingMode
+                            ? 'No notes to group yet'
+                            : 'Start brainstorming!',
+                        style: TextStyle(
+                            fontSize: 20, color: Colors.grey[600])),
+                    const SizedBox(height: 8),
+                    Text(
+                        isGroupingMode
+                            ? 'Switch to Brainstorm to add notes first'
+                            : 'Tap + Add Note to place your first idea',
+                        style: TextStyle(color: Colors.grey[500])),
+                  ],
+                ),
+              ),
+            // Transparent drag areas for each group container — sit below
+            // individual note cards so child notes still win hit-tests in
+            // their own area; background areas move the whole group.
+            ...notes.where((n) => n.isGroup).expand((groupNote) {
+              final children =
+                  notes.where((n) => n.parentId == groupNote.id).toList();
+              if (children.isEmpty) return <Widget>[];
+              final all = [groupNote, ...children];
+              final minX = all.map((n) => n.posX).reduce(min);
+              final minY = all.map((n) => n.posY).reduce(min);
+              final maxX =
+                  all.map((n) => n.posX + _noteWidth).reduce(max);
+              final maxY =
+                  all.map((n) => n.posY + _noteMinHeight).reduce(max);
+              const pad = 18.0;
+              final dragOff =
+                  groupDragOffsets[groupNote.id] ?? Offset.zero;
+              return [
+                _GroupDragArea(
+                  key: ValueKey('drag_area_${groupNote.id}'),
+                  groupNoteId: groupNote.id,
+                  groupNotePosX: groupNote.posX,
+                  groupNotePosY: groupNote.posY,
+                  left: (minX - pad + dragOff.dx) * scale + offset.dx,
+                  top: (minY - pad + dragOff.dy) * scale + offset.dy,
+                  width: (maxX - minX + pad * 2) * scale,
+                  height: (maxY - minY + pad * 2) * scale,
+                  scale: scale,
+                  onGroupDragUpdate: onGroupDragUpdate,
+                  onGroupDragEnd: onGroupDragEnd,
+                  onGroupMove: onNoteMove,
+                ),
+              ];
+            }),
+            // Child notes first, then group notes on top.
+            ...[...notes.where((n) => !n.isGroup), ...notes.where((n) => n.isGroup)]
+                .map((note) {
+              final groupId = note.isGroup ? note.id : note.parentId;
+              final dragOffset = groupId != null
+                  ? (groupDragOffsets[groupId] ?? Offset.zero)
+                  : Offset.zero;
+              return _PositionedNote(
+                key: ValueKey(note.id),
+                note: note,
+                canvasSize: size,
+                offset: offset,
+                scale: scale,
+                isGroupingMode: isGroupingMode,
+                dragOffset: dragOffset,
+                onMove: onNoteMove,
+                onDelete: onNoteDelete,
+                onUpdate: onNoteUpdate,
+                onFindOverlap: onFindOverlap,
+                onGroupNotes: onGroupNotes,
+                onUngroup: onUngroupNote,
+                onGroupDragUpdate: onGroupDragUpdate,
+                onGroupDragEnd: onGroupDragEnd,
+                onDragStart: onNoteDragStart,
+                onDragEnd: onNoteDragEnd,
+              );
+            }),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ─── Grid painter ─────────────────────────────────────────────────────────────
+
+class _InfiniteGridPainter extends CustomPainter {
+  final Offset offset;
+  final double scale;
+
+  const _InfiniteGridPainter({required this.offset, required this.scale});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawColor(const Color(0xFFEEF0F4), BlendMode.src);
+
+    const worldSpacing = 40.0;
+    final screenSpacing = worldSpacing * scale;
+    if (screenSpacing < 6) return;
+
+    final paint = Paint()
+      ..color = const Color(0xFFDDE1EA)
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+
+    final worldLeft = -offset.dx / scale;
+    final worldTop = -offset.dy / scale;
+    final worldRight = (size.width - offset.dx) / scale;
+    final worldBottom = (size.height - offset.dy) / scale;
+
+    final firstX = (worldLeft / worldSpacing).ceil() * worldSpacing;
+    final firstY = (worldTop / worldSpacing).ceil() * worldSpacing;
+
+    final points = <Offset>[];
+    for (double wx = firstX; wx <= worldRight; wx += worldSpacing) {
+      for (double wy = firstY; wy <= worldBottom; wy += worldSpacing) {
+        points.add(Offset(wx * scale + offset.dx, wy * scale + offset.dy));
+      }
+    }
+    if (points.isNotEmpty) {
+      canvas.drawPoints(PointMode.points, points, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_InfiniteGridPainter old) =>
+      old.offset != offset || old.scale != scale;
+}
+
+// ─── Group background painter ─────────────────────────────────────────────────
+
+const _groupPalette = [
+  (Color(0x28A5D6A7), Color(0xFF66BB6A)),
+  (Color(0x2890CAF9), Color(0xFF42A5F5)),
+  (Color(0x28FFCC80), Color(0xFFFFA726)),
+  (Color(0x28CE93D8), Color(0xFFAB47BC)),
+  (Color(0x28F48FB1), Color(0xFFEC407A)),
+  (Color(0x28FFF176), Color(0xFFFFD600)),
+];
+
+(Color, Color) _groupColors(String groupId) =>
+    _groupPalette[groupId.hashCode.abs() % _groupPalette.length];
+
+class _GroupBackgroundPainter extends CustomPainter {
+  final List<StickyNote> notes;
+  final Offset offset;
+  final double scale;
+
+  const _GroupBackgroundPainter(
+      {required this.notes, required this.offset, required this.scale});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final group in notes.where((n) => n.isGroup)) {
+      final children = notes.where((n) => n.parentId == group.id).toList();
+      if (children.isEmpty) continue;
+
+      final all = [group, ...children];
+      double minX = all.first.posX;
+      double minY = all.first.posY;
+      double maxX = minX + _noteWidth;
+      double maxY = minY + _noteMinHeight;
+
+      for (final note in all) {
+        minX = min(minX, note.posX);
+        minY = min(minY, note.posY);
+        maxX = max(maxX, note.posX + _noteWidth);
+        maxY = max(maxY, note.posY + _noteMinHeight);
+      }
+
+      const padding = 18.0;
+      final rect = Rect.fromLTRB(
+        (minX - padding) * scale + offset.dx,
+        (minY - padding) * scale + offset.dy,
+        (maxX + padding) * scale + offset.dx,
+        (maxY + padding) * scale + offset.dy,
+      );
+      final rRect = RRect.fromRectAndRadius(rect, const Radius.circular(12));
+      final (fill, border) = _groupColors(group.id);
+
+      canvas.drawRRect(rRect, Paint()..color = fill);
+      canvas.drawRRect(
+          rRect,
+          Paint()
+            ..color = border
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GroupBackgroundPainter old) =>
+      old.notes != notes || old.offset != offset || old.scale != scale;
+}
+
+// ─── Draggable sticky note ────────────────────────────────────────────────────
+
+const double _noteWidth = 164;
+const double _noteMinHeight = 90;
+const List<String> _noteColors = [
+  '#FFF176',
+  '#A5D6A7',
+  '#F48FB1',
+  '#90CAF9',
+  '#FFCC80',
+  '#CE93D8',
+];
+
+Color _hexColor(String hex) {
+  final h = hex.replaceFirst('#', '');
+  return Color(int.parse('FF$h', radix: 16));
+}
+
+class _PositionedNote extends StatefulWidget {
+  final StickyNote note;
+  final Size canvasSize;
+  final Offset offset;
+  final double scale;
+  final bool isGroupingMode;
+  final Offset dragOffset;
+  final void Function(String id, double worldX, double worldY) onMove;
+  final void Function(String id) onDelete;
+  final void Function(String id, String content) onUpdate;
+  final StickyNote? Function(String excludeId, double worldX, double worldY)
+      onFindOverlap;
+  final void Function(String draggedId, String targetId) onGroupNotes;
+  final void Function(String id) onUngroup;
+  final void Function(String groupId, double dx, double dy) onGroupDragUpdate;
+  final void Function(String groupId) onGroupDragEnd;
+  final VoidCallback onDragStart;
+  final VoidCallback onDragEnd;
+
+  const _PositionedNote({
+    super.key,
+    required this.note,
+    required this.canvasSize,
+    required this.offset,
+    required this.scale,
+    required this.isGroupingMode,
+    required this.dragOffset,
+    required this.onMove,
+    required this.onDelete,
+    required this.onUpdate,
+    required this.onFindOverlap,
+    required this.onGroupNotes,
+    required this.onUngroup,
+    required this.onGroupDragUpdate,
+    required this.onGroupDragEnd,
+    required this.onDragStart,
+    required this.onDragEnd,
+  });
+
+  @override
+  State<_PositionedNote> createState() => _PositionedNoteState();
+}
+
+class _PositionedNoteState extends State<_PositionedNote> {
+  late double _worldX;
+  late double _worldY;
+  bool _isDragging = false;
+  bool _isEditing = false;
+  late TextEditingController _editCtrl;
+  late FocusNode _editFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _worldX = widget.note.posX;
+    _worldY = widget.note.posY;
+    _editCtrl = TextEditingController(text: widget.note.content);
+    _editFocusNode = FocusNode();
+    _editFocusNode.addListener(() {
+      if (!_editFocusNode.hasFocus && _isEditing) {
+        _commitEdit();
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(_PositionedNote old) {
+    super.didUpdateWidget(old);
+    if (!_isDragging) {
+      _worldX = widget.note.posX;
+      _worldY = widget.note.posY;
+    }
+    if (!_isEditing) {
+      _editCtrl.text = widget.note.content;
+    }
+  }
+
+  @override
+  void dispose() {
+    _editCtrl.dispose();
+    _editFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _commitEdit() {
+    if (!_isEditing) return;
+    setState(() => _isEditing = false);
+    if (_editCtrl.text != widget.note.content) {
+      widget.onUpdate(widget.note.id, _editCtrl.text);
+    }
+  }
+
+  Future<void> _showEditDialog() async {
+    final ctrl = TextEditingController(text: widget.note.content);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Note'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(),
+          maxLines: 4,
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    if (confirmed == true && ctrl.text.trim().isNotEmpty) {
+      widget.onUpdate(widget.note.id, ctrl.text.trim());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Apply the group drag offset to non-dragged members so they move together.
+    final extra = _isDragging ? Offset.zero : widget.dragOffset;
+    final screenX = (_worldX + extra.dx) * widget.scale + widget.offset.dx;
+    final screenY = (_worldY + extra.dy) * widget.scale + widget.offset.dy;
+
+    return Positioned(
+      left: screenX,
+      top: screenY,
+      child: Transform.scale(
+        scale: widget.scale,
+        alignment: Alignment.topLeft,
+        child: GestureDetector(
+          onPanStart: (_) {
+            setState(() => _isDragging = true);
+            widget.onDragStart();
+          },
+          onPanUpdate: (d) {
+            // d.delta is already in local (world) coordinates because this
+            // GestureDetector is inside Transform.scale(scale: widget.scale).
+            // Dividing by scale again would make dragging lag at high zoom.
+            setState(() {
+              _worldX += d.delta.dx;
+              _worldY += d.delta.dy;
+            });
+            if (widget.note.isGroup) {
+              widget.onGroupDragUpdate(widget.note.id, d.delta.dx, d.delta.dy);
+            }
+          },
+          onPanEnd: (_) {
+            _isDragging = false;
+            widget.onDragEnd();
+            widget.onMove(widget.note.id, _worldX, _worldY);
+            if (widget.note.isGroup) {
+              widget.onGroupDragEnd(widget.note.id);
+            } else if (widget.note.parentId != null) {
+              // Child note: can leave group in any mode.
+              final target =
+                  widget.onFindOverlap(widget.note.id, _worldX, _worldY);
+              if (target != null && widget.isGroupingMode) {
+                widget.onGroupNotes(widget.note.id, target.id);
+              } else if (target == null) {
+                widget.onUngroup(widget.note.id);
+              }
+            } else if (widget.isGroupingMode) {
+              // Ungrouped note in grouping mode: can join a group.
+              final target =
+                  widget.onFindOverlap(widget.note.id, _worldX, _worldY);
+              if (target != null) {
+                widget.onGroupNotes(widget.note.id, target.id);
+              }
+            }
+          },
+          onDoubleTap: widget.note.isGroup
+              ? () {
+                  setState(() => _isEditing = true);
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _editFocusNode.requestFocus();
+                  });
+                }
+              : _showEditDialog,
+          child: _NoteCard(
+            note: widget.note,
+            isGroupingMode: widget.isGroupingMode,
+            onDelete: () => widget.onDelete(widget.note.id),
+            isEditing: _isEditing,
+            editController: _editCtrl,
+            editFocusNode: _editFocusNode,
+            onEditDone: _commitEdit,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoteCard extends StatelessWidget {
+  final StickyNote note;
+  final bool isGroupingMode;
+  final VoidCallback onDelete;
+  final bool isEditing;
+  final TextEditingController? editController;
+  final FocusNode? editFocusNode;
+  final VoidCallback? onEditDone;
+
+  const _NoteCard({
+    required this.note,
+    required this.isGroupingMode,
+    required this.onDelete,
+    this.isEditing = false,
+    this.editController,
+    this.editFocusNode,
+    this.onEditDone,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (note.isGroup) {
+      return _buildGroupCard();
+    }
+
+    final bg = _hexColor(note.color);
+    final isDark =
+        ThemeData.estimateBrightnessForColor(bg) == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subtleColor = isDark ? Colors.white60 : Colors.black38;
+    final isChild = note.parentId != null;
+
+    return Material(
+      elevation: isChild ? 2 : 6,
+      borderRadius: BorderRadius.circular(3),
+      color: bg,
+      shadowColor: Colors.black38,
+      child: SizedBox(
+        width: _noteWidth,
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 14, 28, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    note.content,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: textColor,
+                      height: 1.45,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Icon(Icons.person_outline,
+                          size: 11, color: subtleColor),
+                      const SizedBox(width: 3),
+                      Expanded(
+                        child: Text(
+                          note.author,
+                          style:
+                              TextStyle(fontSize: 11, color: subtleColor),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isChild && isGroupingMode) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: _groupColors(note.parentId!).$2,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 3,
+              right: 3,
+              child: GestureDetector(
+                onTap: onDelete,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  child: Icon(Icons.close, size: 14, color: subtleColor),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGroupCard() {
+    final (fill, border) = _groupColors(note.id);
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(6),
+      color: Colors.white,
+      shadowColor: Colors.black26,
+      child: Container(
+        width: _noteWidth,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: border, width: 2),
+        ),
+        child: Stack(
+          children: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: fill,
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(4)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.hub_outlined, size: 12, color: border),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Group',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: border,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 28, 10),
+                  child: isEditing
+                      ? TextField(
+                          controller: editController,
+                          focusNode: editFocusNode,
+                          autofocus: true,
+                          maxLines: null,
+                          style: const TextStyle(fontSize: 13, height: 1.45),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                            border: InputBorder.none,
+                          ),
+                          onSubmitted: (_) => onEditDone?.call(),
+                        )
+                      : Text(
+                          note.content.isEmpty ? 'Untitled group' : note.content,
+                          style: TextStyle(
+                            fontSize: 13,
+                            height: 1.45,
+                            color: note.content.isEmpty
+                                ? Colors.black38
+                                : Colors.black87,
+                            fontStyle: note.content.isEmpty
+                                ? FontStyle.italic
+                                : FontStyle.normal,
+                          ),
+                        ),
+                ),
+              ],
+            ),
+            Positioned(
+              top: 3,
+              right: 3,
+              child: GestureDetector(
+                onTap: onDelete,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  child: const Icon(Icons.close, size: 14, color: Colors.black38),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Group drag area ───────────────────────────────────────────────────────────
+// Transparent hit-target that covers a group's bounding box. Sits below
+// individual note cards in the Stack so child notes win in their own area,
+// but captures drags on the background to move the whole group.
+
+class _GroupDragArea extends StatefulWidget {
+  final String groupNoteId;
+  final double groupNotePosX;
+  final double groupNotePosY;
+  final double left;
+  final double top;
+  final double width;
+  final double height;
+  final double scale;
+  final void Function(String groupId, double dx, double dy) onGroupDragUpdate;
+  final void Function(String groupId) onGroupDragEnd;
+  final void Function(String id, double worldX, double worldY) onGroupMove;
+
+  const _GroupDragArea({
+    super.key,
+    required this.groupNoteId,
+    required this.groupNotePosX,
+    required this.groupNotePosY,
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.height,
+    required this.scale,
+    required this.onGroupDragUpdate,
+    required this.onGroupDragEnd,
+    required this.onGroupMove,
+  });
+
+  @override
+  State<_GroupDragArea> createState() => _GroupDragAreaState();
+}
+
+class _GroupDragAreaState extends State<_GroupDragArea> {
+  double _dx = 0;
+  double _dy = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: widget.left,
+      top: widget.top,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanUpdate: (d) {
+          final ddx = d.delta.dx / widget.scale;
+          final ddy = d.delta.dy / widget.scale;
+          _dx += ddx;
+          _dy += ddy;
+          widget.onGroupDragUpdate(widget.groupNoteId, ddx, ddy);
+        },
+        onPanEnd: (_) {
+          widget.onGroupMove(
+            widget.groupNoteId,
+            widget.groupNotePosX + _dx,
+            widget.groupNotePosY + _dy,
+          );
+          widget.onGroupDragEnd(widget.groupNoteId);
+          _dx = 0;
+          _dy = 0;
+        },
+        child: SizedBox(width: widget.width, height: widget.height),
+      ),
+    );
+  }
+}
+
+// ─── Cost-value matrix ─────────────────────────────────────────────────────────
+
+class _CostValueMatrix extends StatelessWidget {
+  final List<StickyNote> notes;
+  final Map<String, Offset> positions;
+  final Map<String, String> lockedBy;
+  final String currentUserId;
+  final void Function(String id, Offset normalized) onPositionChanged;
+  final void Function(String id) onDragStart;
+  final void Function(String id) onDragEnd;
+
+  const _CostValueMatrix({
+    required this.notes,
+    required this.positions,
+    required this.lockedBy,
+    required this.currentUserId,
+    required this.onPositionChanged,
+    required this.onDragStart,
+    required this.onDragEnd,
+  });
+
+  Offset _posFor(String id) => positions[id] ?? const Offset(0.5, 0.5);
+
+  // Colour used for the circle on the matrix and the dot in the list.
+  Color _dotColor(StickyNote note) =>
+      note.isGroup ? _groupColors(note.id).$2 : _hexColor(note.color);
+
+  @override
+  Widget build(BuildContext context) {
+    final items = notes.where((n) => n.isGroup || n.parentId == null).toList();
+
+    if (items.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.grid_view_outlined, size: 72, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text('No notes yet',
+                style: TextStyle(fontSize: 20, color: Colors.grey[600])),
+            const SizedBox(height: 8),
+            Text('Add notes in the Brainstorm slide first',
+                style: TextStyle(color: Colors.grey[500])),
+          ],
+        ),
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Left list ──────────────────────────────────────────────────────
+        Container(
+          width: 220,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(right: BorderSide(color: Color(0xFFE0E0E0))),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+                child: Text(
+                  'ITEMS',
+                  style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey[500],
+                      letterSpacing: 0.8),
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  children: items.map((note) {
+                    final color = _dotColor(note);
+                    final childCount = note.isGroup
+                        ? notes.where((n) => n.parentId == note.id).length
+                        : 0;
+                    final label = note.content.isEmpty
+                        ? (note.isGroup ? 'Untitled group' : '')
+                        : note.content;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 22,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: note.isGroup
+                                  ? _groupColors(note.id).$1
+                                  : color,
+                              border: Border.all(color: color, width: 2),
+                            ),
+                            child: note.isGroup
+                                ? Center(
+                                    child: Icon(Icons.hub_outlined,
+                                        size: 10, color: color))
+                                : null,
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  label,
+                                  style: const TextStyle(
+                                      fontSize: 12, color: Colors.black87),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (note.isGroup && childCount > 0)
+                                  Text(
+                                    '$childCount item${childCount == 1 ? '' : 's'}',
+                                    style: TextStyle(
+                                        fontSize: 10, color: Colors.grey[500]),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // ── Matrix area ────────────────────────────────────────────────────
+        Expanded(
+          child: LayoutBuilder(builder: (context, constraints) {
+            const leftPad = 40.0;
+            const bottomPad = 40.0;
+            const outerPad = 16.0;
+            const matrixLeft = leftPad + outerPad;
+            const matrixTop = outerPad;
+            final matrixRight = constraints.maxWidth - outerPad;
+            final matrixBottom = constraints.maxHeight - bottomPad - outerPad;
+            final matrixW = matrixRight - matrixLeft;
+            final matrixH = matrixBottom - matrixTop;
+
+            Offset toScreen(Offset norm) => Offset(
+                  matrixLeft + norm.dx * matrixW,
+                  matrixTop + (1.0 - norm.dy) * matrixH,
+                );
+
+            return Stack(children: [
+              // Light grey fill behind everything
+              Positioned.fill(
+                  child: Container(color: const Color(0xFFF5F5F5))),
+              // Quadrant grid
+              Positioned(
+                left: matrixLeft,
+                top: matrixTop,
+                width: matrixW,
+                height: matrixH,
+                child: const CustomPaint(painter: _MatrixPainter()),
+              ),
+              // Y-axis label
+              Positioned(
+                left: 0,
+                top: matrixTop,
+                width: leftPad,
+                height: matrixH,
+                child: Center(
+                  child: RotatedBox(
+                    quarterTurns: 3,
+                    child: Text('Value  →',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500)),
+                  ),
+                ),
+              ),
+              // X-axis label
+              Positioned(
+                left: matrixLeft,
+                top: matrixBottom + 8,
+                width: matrixW,
+                height: bottomPad,
+                child: Center(
+                  child: Text('Cost  →',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500)),
+                ),
+              ),
+              // Axis endpoint labels
+              Positioned(
+                left: matrixLeft + 4,
+                top: matrixBottom + 4,
+                child: Text('Low',
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.grey[500])),
+              ),
+              Positioned(
+                right: outerPad + 4,
+                top: matrixBottom + 4,
+                child: Text('High',
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.grey[500])),
+              ),
+              Positioned(
+                left: 4,
+                top: matrixBottom - 14,
+                child: Text('Low',
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.grey[500])),
+              ),
+              Positioned(
+                left: 4,
+                top: matrixTop + 2,
+                child: Text('High',
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.grey[500])),
+              ),
+              // Quadrant labels
+              Positioned(
+                left: matrixLeft + 10,
+                top: matrixTop + 10,
+                child: _quadrantChip('Quick Wins', Icons.star_outline,
+                    const Color(0xFF2E7D32)),
+              ),
+              Positioned(
+                left: matrixLeft + matrixW / 2 + 10,
+                top: matrixTop + 10,
+                child: _quadrantChip('Strategic', Icons.trending_up,
+                    const Color(0xFF1565C0)),
+              ),
+              Positioned(
+                left: matrixLeft + 10,
+                top: matrixTop + matrixH / 2 + 10,
+                child: _quadrantChip('Fill-ins', Icons.low_priority,
+                    const Color(0xFF6D4C41)),
+              ),
+              Positioned(
+                left: matrixLeft + matrixW / 2 + 10,
+                top: matrixTop + matrixH / 2 + 10,
+                child: _quadrantChip('Time Sinks',
+                    Icons.do_not_disturb_outlined, const Color(0xFFC62828)),
+              ),
+              // Circles
+              ...items.map((note) {
+                final pos = toScreen(_posFor(note.id));
+                final color = _dotColor(note);
+                const r = 18.0;
+                final isDark =
+                    ThemeData.estimateBrightnessForColor(color) ==
+                        Brightness.dark;
+                final iconColor = isDark ? Colors.white70 : Colors.white;
+                final lockedByOther = lockedBy.containsKey(note.id) &&
+                    lockedBy[note.id] != currentUserId;
+
+                return Positioned(
+                  left: pos.dx - r,
+                  top: pos.dy - r - 10,
+                  child: Opacity(
+                    opacity: lockedByOther ? 0.35 : 1.0,
+                    child: GestureDetector(
+                      onPanStart: lockedByOther
+                          ? null
+                          : (_) => onDragStart(note.id),
+                      onPanUpdate: lockedByOther
+                          ? null
+                          : (d) {
+                              final cur = _posFor(note.id);
+                              onPositionChanged(
+                                  note.id,
+                                  Offset(
+                                    (cur.dx + d.delta.dx / matrixW)
+                                        .clamp(0.0, 1.0),
+                                    (cur.dy - d.delta.dy / matrixH)
+                                        .clamp(0.0, 1.0),
+                                  ));
+                            },
+                      onPanEnd: lockedByOther
+                          ? null
+                          : (_) => onDragEnd(note.id),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: r * 2,
+                            height: r * 2,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: color,
+                              boxShadow: const [
+                                BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 4,
+                                    offset: Offset(0, 2))
+                              ],
+                            ),
+                            child: Center(
+                              child: note.isGroup
+                                  ? Icon(Icons.hub_outlined,
+                                      size: 14, color: iconColor)
+                                  : Icon(Icons.sticky_note_2_outlined,
+                                      size: 13, color: iconColor),
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          SizedBox(
+                            width: 72,
+                            child: Text(
+                              note.content.isEmpty ? '—' : note.content,
+                              style: const TextStyle(
+                                  fontSize: 9, color: Colors.black54),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ]);
+          }),
+        ),
+      ],
+    );
+  }
+
+  Widget _quadrantChip(String label, IconData icon, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color.withOpacity(0.55)),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: color.withOpacity(0.55),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MatrixPainter extends CustomPainter {
+  const _MatrixPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final half = Size(size.width / 2, size.height / 2);
+    // Quadrant fills
+    canvas.drawRect(Rect.fromLTWH(0, 0, half.width, half.height),
+        Paint()..color = const Color(0xFFE8F5E9));
+    canvas.drawRect(
+        Rect.fromLTWH(half.width, 0, half.width, half.height),
+        Paint()..color = const Color(0xFFE3F2FD));
+    canvas.drawRect(
+        Rect.fromLTWH(0, half.height, half.width, half.height),
+        Paint()..color = const Color(0xFFFFF8E1));
+    canvas.drawRect(
+        Rect.fromLTWH(half.width, half.height, half.width, half.height),
+        Paint()..color = const Color(0xFFFFEBEE));
+
+    final border = Paint()
+      ..color = const Color(0xFFBBBBBB)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    canvas.drawRect(
+        Rect.fromLTWH(0, 0, size.width, size.height), border);
+
+    final divider = Paint()
+      ..color = const Color(0xFF999999)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawLine(
+        Offset(half.width, 0), Offset(half.width, size.height), divider);
+    canvas.drawLine(
+        Offset(0, half.height), Offset(size.width, half.height), divider);
+  }
+
+  @override
+  bool shouldRepaint(_MatrixPainter old) => false;
+}

@@ -1,0 +1,343 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../models/group.dart';
+import '../models/project.dart';
+import '../providers/auth_provider.dart';
+
+class GroupWorkspaceScreen extends StatefulWidget {
+  final String groupSlug;
+
+  const GroupWorkspaceScreen({super.key, required this.groupSlug});
+
+  @override
+  State<GroupWorkspaceScreen> createState() => _GroupWorkspaceScreenState();
+}
+
+class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
+  late Future<(Group, List<Project>)> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    final api = context.read<AuthProvider>().api;
+    _future = Future.wait([
+      api.getGroup(widget.groupSlug),
+      api.listProjects(widget.groupSlug),
+    ]).then((results) => (results[0] as Group, results[1] as List<Project>));
+  }
+
+  void _refresh() => setState(() => _load());
+
+  Future<void> _showCreateDialog(Group group) async {
+    final nameCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New Project'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Project name',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) =>
+                    v == null || v.isEmpty ? 'Name is required' : null,
+                autofocus: true,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: descCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Description (optional)',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(ctx, true);
+              }
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final api = context.read<AuthProvider>().api;
+      await api.createProject(
+        groupSlug: widget.groupSlug,
+        name: nameCtrl.text.trim(),
+        description: descCtrl.text.trim(),
+      );
+      _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  Future<void> _confirmDelete(Group group, Project project) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Project'),
+        content: Text(
+            'Are you sure you want to delete "${project.name}"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final api = context.read<AuthProvider>().api;
+      await api.deleteProject(groupSlug: widget.groupSlug, projectSlug: project.slug);
+      _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final me = context.read<AuthProvider>().user!;
+
+    return FutureBuilder<(Group, List<Project>)>(
+      future: _future,
+      builder: (context, snap) {
+        final group = snap.data?.$1;
+        final projects = snap.data?.$2;
+
+        return Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => context.go('/groups'),
+            ),
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(group?.name ?? '…'),
+                Text(
+                  'Group Workspace',
+                  style: theme.textTheme.labelSmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.people_outlined),
+                tooltip: 'Members',
+                onPressed: () =>
+                    context.go('/groups/${widget.groupSlug}/members'),
+              ),
+            ],
+          ),
+          floatingActionButton: group == null
+              ? null
+              : FloatingActionButton.extended(
+                  onPressed: () => _showCreateDialog(group),
+                  icon: const Icon(Icons.add),
+                  label: const Text('New Project'),
+                ),
+          body: _buildBody(snap, group, projects, me, theme),
+        );
+      },
+    );
+  }
+
+  Widget _buildBody(
+    AsyncSnapshot<(Group, List<Project>)> snap,
+    Group? group,
+    List<Project>? projects,
+    dynamic me,
+    ThemeData theme,
+  ) {
+    if (snap.connectionState == ConnectionState.waiting) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (snap.hasError) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 8),
+            Text(snap.error.toString()),
+            const SizedBox(height: 16),
+            FilledButton.tonal(onPressed: _refresh, child: const Text('Retry')),
+          ],
+        ),
+      );
+    }
+
+    if (projects!.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.folder_open, size: 64, color: theme.colorScheme.outline),
+            const SizedBox(height: 16),
+            const Text('No projects yet', style: TextStyle(fontSize: 16)),
+            const SizedBox(height: 8),
+            const Text(
+              'Create your first project using the button below',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async => _refresh(),
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+        itemCount: projects.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (context, i) {
+          final p = projects[i];
+          final canDelete =
+              p.createdBy == me.id || group!.ownerId == me.id;
+          return _ProjectCard(
+            project: p,
+            canDelete: canDelete,
+            onDelete: () => _confirmDelete(group!, p),
+            onTap: () => context.go(
+              '/groups/${widget.groupSlug}/projects/${p.slug}',
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+
+class _ProjectCard extends StatelessWidget {
+  final Project project;
+  final bool canDelete;
+  final VoidCallback onDelete;
+  final VoidCallback? onTap;
+
+  const _ProjectCard({
+    required this.project,
+    required this.canDelete,
+    required this.onDelete,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                backgroundColor: theme.colorScheme.secondaryContainer,
+                child: Icon(Icons.folder,
+                    color: theme.colorScheme.onSecondaryContainer),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(project.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 16)),
+                    if (project.description.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(project.description,
+                          style: TextStyle(
+                              color: Colors.grey.shade600, fontSize: 13)),
+                    ],
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.person_outline,
+                            size: 13, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(project.creatorUsername ?? 'Unknown',
+                            style: const TextStyle(
+                                color: Colors.grey, fontSize: 12)),
+                        const SizedBox(width: 12),
+                        const Icon(Icons.schedule, size: 13, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(_formatDate(project.createdAt),
+                            style: const TextStyle(
+                                color: Colors.grey, fontSize: 12)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (canDelete)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  onPressed: onDelete,
+                  tooltip: 'Delete project',
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime dt) =>
+      '${dt.day}/${dt.month}/${dt.year}';
+}
