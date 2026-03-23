@@ -51,6 +51,9 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
   // Per-group drag offsets so all members move together in real-time.
   final Map<String, Offset> _groupDragOffsets = {};
 
+  // votes: noteId → userId → count
+  final Map<String, Map<String, int>> _votes = {};
+
   // Matrix positions for slide 2: normalized (dx=cost 0-1, dy=value 0-1, 1=high)
   final Map<String, Offset> _matrixPositions = {};
   // noteID → userID of whoever is currently dragging that item
@@ -161,7 +164,13 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
                   Offset(note.matrixCost!, note.matrixValue!);
             }
           }
-          if (_notes.isNotEmpty && (_slide == 0 || _slide == 1)) {
+          _votes.clear();
+          for (final v in (p['votes'] as List? ?? [])) {
+            final vMap = v as Map<String, dynamic>;
+            _votes.putIfAbsent(vMap['note_id'] as String, () => {})[
+                vMap['user_id'] as String] = vMap['count'] as int;
+          }
+          if (_notes.isNotEmpty && (_slide == 0 || _slide == 1 || _slide == 2)) {
             _centerIfNeeded();
           }
 
@@ -225,6 +234,12 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
                 ? _project!.copyWith(clearPresenter: true)
                 : _project!.copyWith(presenterId: pid, presenterUsername: pname);
           }
+
+        case 'vote':
+          final noteId = payload['note_id'] as String;
+          final userId = payload['user_id'] as String;
+          final count = payload['count'] as int;
+          _votes.putIfAbsent(noteId, () => {})[userId] = count;
       }
     });
   }
@@ -281,6 +296,17 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
     _send('note_group', {'dragged_id': draggedId, 'target_id': targetId});
   }
 
+  int _myVotesUsed() {
+    final userId = context.read<AuthProvider>().user?.id ?? '';
+    return _votes.values.fold(0, (sum, m) => sum + (m[userId] ?? 0));
+  }
+
+  void _setVote(String noteId, int count) {
+    final userId = context.read<AuthProvider>().user?.id ?? '';
+    setState(() => _votes.putIfAbsent(noteId, () => {})[userId] = count);
+    _send('vote', {'note_id': noteId, 'count': count});
+  }
+
   bool _anyNoteVisible() {
     if (_notes.isEmpty) return true;
     final size = MediaQuery.of(context).size;
@@ -309,7 +335,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
     if (!_isPresenter) return;
     setState(() => _slide = i);
     _send('slide_change', {'slide': i});
-    if (i == 0 || i == 1) _centerIfNeeded();
+    if (i == 0 || i == 1 || i == 2) _centerIfNeeded();
   }
 
   Future<void> _showSetPresenterDialog() async {
@@ -558,12 +584,22 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
   @override
   Widget build(BuildContext context) {
     final isGroupingMode = _slide == 1;
-    final isCostValueMode = _slide == 2;
+    final enableVote = _project?.enableVote ?? false;
+    final enablePrioritise = _project?.enablePrioritise ?? false;
+    final isVotingMode = _slide == 2 && enableVote;
+    final isCostValueMode = _slide == 3 && enablePrioritise;
     final isPresenter = _isPresenter;
     final canAssign = _canAssignPresenter;
     final presenterLabel = _project?.presenterUsername
         ?? _project?.creatorUsername
         ?? '';
+
+    final enabledSlides = [
+      0,
+      1,
+      if (enableVote) 2,
+      if (enablePrioritise) 3,
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -624,6 +660,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
           _SlideTabBar(
             currentSlide: _slide,
             enabled: isPresenter,
+            enabledSlides: enabledSlides,
             onSlideChanged: _changeSlide,
           ),
           Expanded(
@@ -638,7 +675,35 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
                     onDragStart: _onMatrixDragStart,
                     onDragEnd: _onMatrixDragEnd,
                   )
-                : ClipRect(
+                : isVotingMode
+                    ? ClipRect(
+                        child: Listener(
+                          onPointerSignal: _onPointerSignal,
+                          child: GestureDetector(
+                            onScaleStart: _onScaleStart,
+                            onScaleUpdate: _onScaleUpdate,
+                            child: _VoteCanvas(
+                              notes: _notes,
+                              votes: _votes,
+                              currentUserId:
+                                  context.read<AuthProvider>().user?.id ?? '',
+                              starsLeft: 4 - _myVotesUsed(),
+                              offset: _offset,
+                              scale: _scale,
+                              onVoteDelta: (noteId, delta) {
+                                final userId =
+                                    context.read<AuthProvider>().user?.id ?? '';
+                                final current =
+                                    _votes[noteId]?[userId] ?? 0;
+                                final next = (current + delta).clamp(0, 4);
+                                if (next == current) return;
+                                _setVote(noteId, next);
+                              },
+                            ),
+                          ),
+                        ),
+                      )
+                    : ClipRect(
                     child: Listener(
                       onPointerSignal: _onPointerSignal,
                       child: GestureDetector(
@@ -675,26 +740,31 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
 
 // ─── Slide tab bar ────────────────────────────────────────────────────────────
 
-const _slideLabels = ['Brainstorm', 'Group', 'Prioritise'];
-const _slideIcons = [Icons.sticky_note_2_outlined, Icons.hub_outlined, Icons.grid_view_outlined];
-const _slideCount = 3;
+const _slideLabels = ['Brainstorm', 'Group', 'Vote', 'Prioritise'];
+const _slideIcons = [Icons.sticky_note_2_outlined, Icons.hub_outlined, Icons.how_to_vote_outlined, Icons.grid_view_outlined];
 
 class _SlideTabBar extends StatelessWidget {
   final int currentSlide;
   final bool enabled;
+  final List<int> enabledSlides;
   final void Function(int) onSlideChanged;
 
   const _SlideTabBar({
     required this.currentSlide,
     required this.enabled,
+    required this.enabledSlides,
     required this.onSlideChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canPrev = enabled && currentSlide > 0;
-    final canNext = enabled && currentSlide < _slideCount - 1;
+    final idx = enabledSlides.indexOf(currentSlide);
+    final prevSlide = idx > 0 ? enabledSlides[idx - 1] : null;
+    final nextSlide =
+        idx < enabledSlides.length - 1 ? enabledSlides[idx + 1] : null;
+    final canPrev = enabled && prevSlide != null;
+    final canNext = enabled && nextSlide != null;
 
     return Container(
       height: 40,
@@ -709,32 +779,31 @@ class _SlideTabBar extends StatelessWidget {
           _NavArrow(
             icon: Icons.chevron_left,
             enabled: canPrev,
-            onTap: canPrev ? () => onSlideChanged(currentSlide - 1) : null,
+            onTap: canPrev ? () => onSlideChanged(prevSlide) : null,
           ),
           const SizedBox(width: 4),
-          // Slide tabs
-          ...List.generate(_slideCount, (i) {
-            final widgets = <Widget>[
+          // Slide tabs — only enabled slides
+          ...enabledSlides.indexed.expand((entry) {
+            final (pos, i) = entry;
+            return [
               _SlideTab(
                 label: _slideLabels[i],
                 icon: _slideIcons[i],
                 selected: currentSlide == i,
                 onTap: enabled ? () => onSlideChanged(i) : null,
               ),
+              if (pos < enabledSlides.length - 1)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Icon(Icons.chevron_right,
+                      size: 14, color: Colors.grey[400]),
+                ),
             ];
-            if (i < _slideCount - 1) {
-              widgets.add(Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Icon(Icons.chevron_right,
-                    size: 14, color: Colors.grey[400]),
-              ));
-            }
-            return widgets;
-          }).expand((w) => w),
+          }),
           const Spacer(),
-          // Slide counter
+          // Slide counter (position within enabled slides)
           Text(
-            '${currentSlide + 1} / $_slideCount',
+            '${idx + 1} / ${enabledSlides.length}',
             style: TextStyle(fontSize: 12, color: Colors.grey[500]),
           ),
           const SizedBox(width: 4),
@@ -742,7 +811,7 @@ class _SlideTabBar extends StatelessWidget {
           _NavArrow(
             icon: Icons.chevron_right,
             enabled: canNext,
-            onTap: canNext ? () => onSlideChanged(currentSlide + 1) : null,
+            onTap: canNext ? () => onSlideChanged(nextSlide) : null,
           ),
         ],
       ),
@@ -1314,6 +1383,7 @@ class _NoteCard extends StatelessWidget {
   final bool isGroupingMode;
   final VoidCallback onDelete;
   final bool isEditing;
+  final bool showActions;
   final TextEditingController? editController;
   final FocusNode? editFocusNode;
   final VoidCallback? onEditDone;
@@ -1323,6 +1393,7 @@ class _NoteCard extends StatelessWidget {
     required this.isGroupingMode,
     required this.onDelete,
     this.isEditing = false,
+    this.showActions = true,
     this.editController,
     this.editFocusNode,
     this.onEditDone,
@@ -1395,17 +1466,18 @@ class _NoteCard extends StatelessWidget {
                 ],
               ),
             ),
-            Positioned(
-              top: 3,
-              right: 3,
-              child: GestureDetector(
-                onTap: onDelete,
-                child: Container(
-                  padding: const EdgeInsets.all(3),
-                  child: Icon(Icons.close, size: 14, color: subtleColor),
+            if (showActions)
+              Positioned(
+                top: 3,
+                right: 3,
+                child: GestureDetector(
+                  onTap: onDelete,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    child: Icon(Icons.close, size: 14, color: subtleColor),
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -1487,17 +1559,18 @@ class _NoteCard extends StatelessWidget {
                 ),
               ],
             ),
-            Positioned(
-              top: 3,
-              right: 3,
-              child: GestureDetector(
-                onTap: onDelete,
-                child: Container(
-                  padding: const EdgeInsets.all(3),
-                  child: const Icon(Icons.close, size: 14, color: Colors.black38),
+            if (showActions)
+              Positioned(
+                top: 3,
+                right: 3,
+                child: GestureDetector(
+                  onTap: onDelete,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    child: const Icon(Icons.close, size: 14, color: Colors.black38),
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -1967,4 +2040,254 @@ class _MatrixPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_MatrixPainter old) => false;
+}
+
+// ─── Vote canvas ───────────────────────────────────────────────────────────────
+
+class _VoteCanvas extends StatelessWidget {
+  final List<StickyNote> notes;
+  final Map<String, Map<String, int>> votes;
+  final String currentUserId;
+  final int starsLeft;
+  final Offset offset;
+  final double scale;
+  final void Function(String noteId, int delta) onVoteDelta;
+
+  const _VoteCanvas({
+    required this.notes,
+    required this.votes,
+    required this.currentUserId,
+    required this.starsLeft,
+    required this.offset,
+    required this.scale,
+    required this.onVoteDelta,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.hardEdge,
+      children: [
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _InfiniteGridPainter(offset: offset, scale: scale),
+          ),
+        ),
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _GroupBackgroundPainter(
+                notes: notes, offset: offset, scale: scale),
+          ),
+        ),
+        if (notes.isEmpty)
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.how_to_vote_outlined,
+                    size: 72, color: Colors.grey[400]),
+                const SizedBox(height: 16),
+                Text('No notes to vote on yet',
+                    style:
+                        TextStyle(fontSize: 20, color: Colors.grey[600])),
+                const SizedBox(height: 8),
+                Text('Add notes in Brainstorm and group them first',
+                    style: TextStyle(color: Colors.grey[500])),
+              ],
+            ),
+          ),
+        // Child notes first, then group notes on top (same z-order as canvas).
+        ...[...notes.where((n) => !n.isGroup), ...notes.where((n) => n.isGroup)]
+            .map((note) => _VotePositionedNote(
+                  key: ValueKey('vote_${note.id}'),
+                  note: note,
+                  offset: offset,
+                  scale: scale,
+                  noteVotes: votes[note.id] ?? {},
+                  currentUserId: currentUserId,
+                  starsLeft: starsLeft,
+                  onVoteDelta: (delta) => onVoteDelta(note.id, delta),
+                )),
+        _StarTray(starsLeft: starsLeft),
+      ],
+    );
+  }
+}
+
+class _VotePositionedNote extends StatelessWidget {
+  final StickyNote note;
+  final Offset offset;
+  final double scale;
+  final Map<String, int> noteVotes;
+  final String currentUserId;
+  final int starsLeft;
+  final void Function(int delta) onVoteDelta;
+
+  const _VotePositionedNote({
+    super.key,
+    required this.note,
+    required this.offset,
+    required this.scale,
+    required this.noteVotes,
+    required this.currentUserId,
+    required this.starsLeft,
+    required this.onVoteDelta,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final screenX = note.posX * scale + offset.dx;
+    final screenY = note.posY * scale + offset.dy;
+    final myVotes = noteVotes[currentUserId] ?? 0;
+    final totalVotes = noteVotes.values.fold(0, (a, b) => a + b);
+
+    return Positioned(
+      left: screenX,
+      top: screenY,
+      child: Transform.scale(
+        scale: scale,
+        alignment: Alignment.topLeft,
+        child: DragTarget<bool>(
+          onWillAcceptWithDetails: (_) => starsLeft > 0,
+          onAcceptWithDetails: (_) => onVoteDelta(1),
+          builder: (context, candidateData, _) {
+            final isHovered = candidateData.isNotEmpty;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  decoration: isHovered
+                      ? BoxDecoration(
+                          borderRadius: BorderRadius.circular(6),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.amber.withOpacity(0.6),
+                              blurRadius: 14,
+                              spreadRadius: 3,
+                            ),
+                          ],
+                        )
+                      : null,
+                  child: _NoteCard(
+                    note: note,
+                    isGroupingMode: false,
+                    showActions: false,
+                    onDelete: () {},
+                  ),
+                ),
+                if (totalVotes > 0)
+                  Positioned(
+                    top: -10,
+                    right: -10,
+                    child: GestureDetector(
+                      onTap: myVotes > 0 ? () => onVoteDelta(-1) : null,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: myVotes > 0
+                              ? Colors.amber[700]
+                              : Colors.grey[500],
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: const [
+                            BoxShadow(blurRadius: 4, color: Colors.black26),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star,
+                                size: 11, color: Colors.white),
+                            const SizedBox(width: 2),
+                            Text(
+                              '$totalVotes',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _StarTray extends StatelessWidget {
+  final int starsLeft;
+
+  const _StarTray({required this.starsLeft});
+
+  @override
+  Widget build(BuildContext context) {
+    const total = 4;
+    return Positioned(
+      bottom: 20,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: 12,
+                color: Colors.black.withOpacity(0.15),
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Drag to vote  ',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500),
+              ),
+              ...List.generate(total, (i) {
+                final isAvailable = i < starsLeft;
+                final star = Icon(
+                  Icons.star_rounded,
+                  color: isAvailable ? Colors.amber : Colors.grey[300],
+                  size: 32,
+                );
+                if (!isAvailable) return star;
+                return Draggable<bool>(
+                  data: true,
+                  feedback: Material(
+                    color: Colors.transparent,
+                    child: Icon(Icons.star_rounded,
+                        color: Colors.amber, size: 38),
+                  ),
+                  childWhenDragging: Icon(Icons.star_outline_rounded,
+                      color: Colors.grey[300], size: 32),
+                  child: star,
+                );
+              }),
+              const SizedBox(width: 6),
+              Text(
+                '$starsLeft / $total',
+                style:
+                    TextStyle(fontSize: 11, color: Colors.grey[500]),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

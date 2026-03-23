@@ -20,8 +20,10 @@ func NewProjectHandler(db *gorm.DB) *ProjectHandler {
 }
 
 type CreateProjectRequest struct {
-	Name        string `json:"name" binding:"required,min=2"`
-	Description string `json:"description"`
+	Name             string `json:"name" binding:"required,min=2"`
+	Description      string `json:"description"`
+	EnableVote       bool   `json:"enable_vote"`
+	EnablePrioritise bool   `json:"enable_prioritise"`
 }
 
 // loadGroupAsMember fetches the group by slug with members preloaded and
@@ -101,17 +103,25 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	})
 
 	project := models.Project{
-		Name:        req.Name,
-		Slug:        slug,
-		Description: req.Description,
-		GroupID:     group.ID,
-		CreatedBy:   userID,
+		Name:             req.Name,
+		Slug:             slug,
+		Description:      req.Description,
+		GroupID:          group.ID,
+		CreatedBy:        userID,
+		EnableVote:       req.EnableVote,
+		EnablePrioritise: req.EnablePrioritise,
 	}
 
 	if err := h.db.Create(&project).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create project"})
 		return
 	}
+	// UpdateColumns with a map always sets the value even when false,
+	// because GORM's zero-value skip only applies to struct-based updates.
+	h.db.Model(&project).UpdateColumns(map[string]any{
+		"enable_vote":       req.EnableVote,
+		"enable_prioritise": req.EnablePrioritise,
+	})
 
 	h.db.Preload("Creator").Preload("Presenter").First(&project, "id = ?", project.ID)
 
@@ -165,6 +175,48 @@ func (h *ProjectHandler) SetPresenter(c *gin.Context) {
 
 	h.db.Model(&project).Update("presenter_id", req.UserID)
 	ws.NotifyPresenter(project.ID, req.UserID, presenterUsername)
+
+	h.db.Preload("Creator").Preload("Presenter").First(&project, "id = ?", project.ID)
+	c.JSON(http.StatusOK, project)
+}
+
+func (h *ProjectHandler) UpdateProject(c *gin.Context) {
+	userID := c.MustGet("userID").(string)
+
+	group, ok := h.loadGroupAsMember(c)
+	if !ok {
+		return
+	}
+
+	projectSlug := c.Param("pid")
+	var project models.Project
+	if err := h.db.Where("slug = ? AND group_id = ?", projectSlug, group.ID).First(&project).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+
+	if project.CreatedBy != userID && group.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the project creator or group owner can edit this project"})
+		return
+	}
+
+	var req struct {
+		Name             string `json:"name" binding:"required,min=2"`
+		Description      string `json:"description"`
+		EnableVote       bool   `json:"enable_vote"`
+		EnablePrioritise bool   `json:"enable_prioritise"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	h.db.Model(&project).UpdateColumns(map[string]any{
+		"name":              req.Name,
+		"description":       req.Description,
+		"enable_vote":       req.EnableVote,
+		"enable_prioritise": req.EnablePrioritise,
+	})
 
 	h.db.Preload("Creator").Preload("Presenter").First(&project, "id = ?", project.ID)
 	c.JSON(http.StatusOK, project)

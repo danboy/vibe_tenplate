@@ -9,6 +9,8 @@ class Project {
   final DateTime createdAt;
   final String? presenterId;
   final String? presenterUsername;
+  final bool enableVote;
+  final bool enablePrioritise;
 
   const Project({
     required this.id,
@@ -21,6 +23,8 @@ class Project {
     required this.createdAt,
     this.presenterId,
     this.presenterUsername,
+    this.enableVote = true,
+    this.enablePrioritise = true,
   });
 
   factory Project.fromJson(Map<String, dynamic> json) => Project(
@@ -36,6 +40,8 @@ class Project {
         presenterId: json['presenter_id'] as String?,
         presenterUsername:
             (json['presenter'] as Map<String, dynamic>?)?['username'] as String?,
+        enableVote: json['enable_vote'] as bool? ?? true,
+        enablePrioritise: json['enable_prioritise'] as bool? ?? true,
       );
 
   Project copyWith({String? presenterId, String? presenterUsername, bool clearPresenter = false}) =>
@@ -50,5 +56,7 @@ class Project {
         createdAt: createdAt,
         presenterId: clearPresenter ? null : (presenterId ?? this.presenterId),
         presenterUsername: clearPresenter ? null : (presenterUsername ?? this.presenterUsername),
+        enableVote: enableVote,
+        enablePrioritise: enablePrioritise,
       );
 }

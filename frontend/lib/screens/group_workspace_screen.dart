@@ -38,52 +38,81 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     final nameCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
+    var enableVote = true;
+    var enablePrioritise = true;
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New Project'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Project name',
-                  border: OutlineInputBorder(),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('New Project'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Project name',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      v == null || v.isEmpty ? 'Name is required' : null,
+                  autofocus: true,
                 ),
-                validator: (v) =>
-                    v == null || v.isEmpty ? 'Name is required' : null,
-                autofocus: true,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: descCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Description (optional)',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: descCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Description (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
                 ),
-                maxLines: 3,
-              ),
-            ],
+                const SizedBox(height: 16),
+                Text('Optional slides',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[600])),
+                const SizedBox(height: 4),
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Vote'),
+                  subtitle: const Text('Team members place stars on notes'),
+                  value: enableVote,
+                  onChanged: (v) => setLocal(() => enableVote = v ?? true),
+                ),
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Prioritise'),
+                  subtitle: const Text('Cost vs value matrix'),
+                  value: enablePrioritise,
+                  onChanged: (v) =>
+                      setLocal(() => enablePrioritise = v ?? true),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  Navigator.pop(ctx, true);
+                }
+              },
+              child: const Text('Create'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(ctx, true);
-              }
-            },
-            child: const Text('Create'),
-          ),
-        ],
       ),
     );
 
@@ -95,6 +124,111 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
         groupSlug: widget.groupSlug,
         name: nameCtrl.text.trim(),
         description: descCtrl.text.trim(),
+        enableVote: enableVote,
+        enablePrioritise: enablePrioritise,
+      );
+      _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  Future<void> _showEditDialog(Project project) async {
+    final nameCtrl = TextEditingController(text: project.name);
+    final descCtrl = TextEditingController(text: project.description);
+    final formKey = GlobalKey<FormState>();
+    var enableVote = project.enableVote;
+    var enablePrioritise = project.enablePrioritise;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Edit Project'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Project name',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      v == null || v.isEmpty ? 'Name is required' : null,
+                  autofocus: true,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: descCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Description (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 16),
+                Text('Optional slides',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[600])),
+                const SizedBox(height: 4),
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Vote'),
+                  subtitle: const Text('Team members place stars on notes'),
+                  value: enableVote,
+                  onChanged: (v) => setLocal(() => enableVote = v ?? true),
+                ),
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Prioritise'),
+                  subtitle: const Text('Cost vs value matrix'),
+                  value: enablePrioritise,
+                  onChanged: (v) =>
+                      setLocal(() => enablePrioritise = v ?? true),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  Navigator.pop(ctx, true);
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final api = context.read<AuthProvider>().api;
+      await api.updateProject(
+        groupSlug: widget.groupSlug,
+        projectSlug: project.slug,
+        name: nameCtrl.text.trim(),
+        description: descCtrl.text.trim(),
+        enableVote: enableVote,
+        enablePrioritise: enablePrioritise,
       );
       _refresh();
     } catch (e) {
@@ -274,6 +408,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
           return _ProjectCard(
             project: p,
             canDelete: canDelete,
+            onEdit: canDelete ? () => _showEditDialog(p) : null,
             onDelete: () => _confirmDelete(group!, p),
             onTap: () => context.go(
               '/groups/${widget.groupSlug}/projects/${p.slug}',
@@ -292,12 +427,14 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
 class _ProjectCard extends StatelessWidget {
   final Project project;
   final bool canDelete;
+  final VoidCallback? onEdit;
   final VoidCallback onDelete;
   final VoidCallback? onTap;
 
   const _ProjectCard({
     required this.project,
     required this.canDelete,
+    this.onEdit,
     required this.onDelete,
     this.onTap,
   });
@@ -353,6 +490,12 @@ class _ProjectCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (onEdit != null)
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: onEdit,
+                  tooltip: 'Edit project',
+                ),
               if (canDelete)
                 IconButton(
                   icon: const Icon(Icons.delete_outline, color: Colors.red),

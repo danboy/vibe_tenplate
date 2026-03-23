@@ -103,11 +103,17 @@ func (h *Hub) sendInit(client *Client) {
 		notes = []models.StickyNote{}
 	}
 
+	var votes []models.NoteVote
+	h.db.Where("project_id = ?", h.projectID).Find(&votes)
+	if votes == nil {
+		votes = []models.NoteVote{}
+	}
+
 	h.mu.Lock()
 	slide := h.currentSlide
 	h.mu.Unlock()
 
-	data, err := buildMessage("init", map[string]any{"notes": notes, "slide": slide})
+	data, err := buildMessage("init", map[string]any{"notes": notes, "slide": slide, "votes": votes})
 	if err != nil {
 		log.Println("ws: sendInit build error:", err)
 		return
@@ -382,6 +388,51 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			}
 		} else {
 			h.restackGroup(parentID)
+		}
+
+	case "vote":
+		var p struct {
+			NoteID string `json:"note_id"`
+			Count  int    `json:"count"`
+		}
+		if json.Unmarshal(msg.Payload, &p) != nil {
+			return
+		}
+		if p.Count < 0 {
+			p.Count = 0
+		}
+		// Validate total votes for this user across the project won't exceed 4.
+		var otherVotes []models.NoteVote
+		h.db.Where("project_id = ? AND user_id = ? AND note_id != ?", h.projectID, client.userID, p.NoteID).
+			Find(&otherVotes)
+		total := 0
+		for _, v := range otherVotes {
+			total += v.Count
+		}
+		if total+p.Count > 4 {
+			return
+		}
+		// Upsert the vote for this user+note.
+		var vote models.NoteVote
+		err := h.db.Where("project_id = ? AND note_id = ? AND user_id = ?",
+			h.projectID, p.NoteID, client.userID).First(&vote).Error
+		if err != nil {
+			vote = models.NoteVote{
+				ProjectID: h.projectID,
+				NoteID:    p.NoteID,
+				UserID:    client.userID,
+				Count:     p.Count,
+			}
+			h.db.Create(&vote)
+		} else {
+			h.db.Model(&vote).Update("count", p.Count)
+		}
+		if data, err := buildMessage("vote", map[string]any{
+			"note_id": p.NoteID,
+			"user_id": client.userID,
+			"count":   p.Count,
+		}); err == nil {
+			h.broadcast <- data
 		}
 	}
 }

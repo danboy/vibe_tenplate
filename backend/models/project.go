@@ -18,8 +18,10 @@ type Project struct {
 	GroupID     string         `json:"group_id"    gorm:"not null;index;uniqueIndex:idx_group_project_slug;type:text"`
 	CreatedBy   string         `json:"created_by"  gorm:"type:text"`
 	Creator     *User          `json:"creator,omitempty"   gorm:"foreignKey:CreatedBy"`
-	PresenterID *string        `json:"presenter_id"        gorm:"type:text"`
-	Presenter   *User          `json:"presenter,omitempty" gorm:"foreignKey:PresenterID"`
+	PresenterID      *string        `json:"presenter_id"        gorm:"type:text"`
+	Presenter        *User          `json:"presenter,omitempty" gorm:"foreignKey:PresenterID"`
+	EnableVote       bool           `json:"enable_vote"         gorm:"not null;default:true"`
+	EnablePrioritise bool           `json:"enable_prioritise"   gorm:"not null;default:true"`
 }
 
 func (p *Project) BeforeCreate(tx *gorm.DB) error {

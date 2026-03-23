@@ -209,11 +209,40 @@ class ApiService {
     required String groupSlug,
     required String name,
     required String description,
+    required bool enableVote,
+    required bool enablePrioritise,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/groups/$groupSlug/projects'),
       headers: _headers,
-      body: json.encode({'name': name, 'description': description}),
+      body: json.encode({
+        'name': name,
+        'description': description,
+        'enable_vote': enableVote,
+        'enable_prioritise': enablePrioritise,
+      }),
+    );
+    final data = await _parseMap(response);
+    return Project.fromJson(data);
+  }
+
+  Future<Project> updateProject({
+    required String groupSlug,
+    required String projectSlug,
+    required String name,
+    required String description,
+    required bool enableVote,
+    required bool enablePrioritise,
+  }) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/groups/$groupSlug/projects/$projectSlug'),
+      headers: _headers,
+      body: json.encode({
+        'name': name,
+        'description': description,
+        'enable_vote': enableVote,
+        'enable_prioritise': enablePrioritise,
+      }),
     );
     final data = await _parseMap(response);
     return Project.fromJson(data);

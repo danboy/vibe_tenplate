@@ -66,6 +66,7 @@ func main() {
 			protected.GET("/groups/:id/projects", projectHandler.ListProjects)
 			protected.POST("/groups/:id/projects", projectHandler.CreateProject)
 			protected.GET("/groups/:id/projects/:pid", projectHandler.GetProject)
+			protected.PATCH("/groups/:id/projects/:pid", projectHandler.UpdateProject)
 			protected.DELETE("/groups/:id/projects/:pid", projectHandler.DeleteProject)
 			protected.PUT("/groups/:id/projects/:pid/presenter", projectHandler.SetPresenter)
 		}
