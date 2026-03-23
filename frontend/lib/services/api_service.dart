@@ -144,6 +144,16 @@ class ApiService {
     return Group.fromJson(data);
   }
 
+  Future<({String slug, String name})> joinByCode(String code) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/groups/join-by-code'),
+      headers: _headers,
+      body: json.encode({'code': code}),
+    );
+    final data = await _parseMap(response);
+    return (slug: data['slug'] as String, name: data['name'] as String);
+  }
+
   Future<void> joinGroup(String slug, {String? code}) async {
     final response = await http.post(
       Uri.parse('$baseUrl/groups/$slug/join'),

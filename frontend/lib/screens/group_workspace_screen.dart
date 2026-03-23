@@ -16,6 +16,7 @@ class GroupWorkspaceScreen extends StatefulWidget {
 
 class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
   late Future<(Group, List<Project>)> _future;
+  String _search = '';
 
   @override
   void initState() {
@@ -159,17 +160,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
               icon: const Icon(Icons.arrow_back),
               onPressed: () => context.go('/groups'),
             ),
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(group?.name ?? '…'),
-                Text(
-                  'Group Workspace',
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-              ],
-            ),
+            title: Text(group?.name ?? '…'),
             actions: [
               IconButton(
                 icon: const Icon(Icons.people_outlined),
@@ -236,14 +227,48 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
       );
     }
 
-    return RefreshIndicator(
+    final filtered = _search.isEmpty
+        ? projects
+        : projects
+            .where((p) =>
+                p.name.toLowerCase().contains(_search.toLowerCase()) ||
+                p.description.toLowerCase().contains(_search.toLowerCase()))
+            .toList();
+
+    if (filtered.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text('No projects found', style: TextStyle(fontSize: 16)),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: TextField(
+            decoration: const InputDecoration(
+              hintText: 'Search projects…',
+              prefixIcon: Icon(Icons.search, size: 20),
+            ),
+            onChanged: (v) => setState(() => _search = v),
+          ),
+        ),
+        Expanded(
+          child: RefreshIndicator(
       onRefresh: () async => _refresh(),
       child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-        itemCount: projects.length,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+        itemCount: filtered.length,
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (context, i) {
-          final p = projects[i];
+          final p = filtered[i];
           final canDelete =
               p.createdBy == me.id || group!.ownerId == me.id;
           return _ProjectCard(
@@ -256,6 +281,9 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
           );
         },
       ),
+    ),
+        ),
+      ],
     );
   }
 }

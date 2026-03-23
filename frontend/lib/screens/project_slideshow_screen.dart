@@ -161,6 +161,9 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
                   Offset(note.matrixCost!, note.matrixValue!);
             }
           }
+          if (_notes.isNotEmpty && (_slide == 0 || _slide == 1)) {
+            _centerIfNeeded();
+          }
 
         case 'note_create':
           _notes.add(StickyNote.fromJson(payload as Map<String, dynamic>));
@@ -255,6 +258,9 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
       }
     } else {
       // Child or ungrouped note moves independently.
+      setState(() {
+        _notes[idx] = _notes[idx].copyWith(posX: worldX, posY: worldY);
+      });
       _send('note_move', {'id': id, 'pos_x': worldX, 'pos_y': worldY});
     }
   }
@@ -275,15 +281,35 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
     _send('note_group', {'dragged_id': draggedId, 'target_id': targetId});
   }
 
+  bool _anyNoteVisible() {
+    if (_notes.isEmpty) return true;
+    final size = MediaQuery.of(context).size;
+    const tabBarH = 40.0;
+    final canvasH = size.height - kToolbarHeight - tabBarH;
+    for (final note in _notes) {
+      final sx = note.posX * _scale + _offset.dx;
+      final sy = note.posY * _scale + _offset.dy;
+      if (sx + _noteWidth * _scale > 0 &&
+          sx < size.width &&
+          sy + _noteMinHeight * _scale > 0 &&
+          sy < canvasH) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _centerIfNeeded() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_anyNoteVisible()) _centerView();
+    });
+  }
+
   void _changeSlide(int i) {
     if (!_isPresenter) return;
     setState(() => _slide = i);
     _send('slide_change', {'slide': i});
-    if (i == 0 || i == 1) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _centerView();
-      });
-    }
+    if (i == 0 || i == 1) _centerIfNeeded();
   }
 
   Future<void> _showSetPresenterDialog() async {
@@ -1234,8 +1260,9 @@ class _PositionedNoteState extends State<_PositionedNote> {
             }
           },
           onPanEnd: (_) {
-            _isDragging = false;
-            widget.onDragEnd();
+            // onMove first: optimistically updates parent state while
+            // _isDragging is still true, so didUpdateWidget won't snap the
+            // note back to the old position when we rebuild below.
             widget.onMove(widget.note.id, _worldX, _worldY);
             if (widget.note.isGroup) {
               widget.onGroupDragEnd(widget.note.id);
@@ -1256,6 +1283,8 @@ class _PositionedNoteState extends State<_PositionedNote> {
                 widget.onGroupNotes(widget.note.id, target.id);
               }
             }
+            setState(() => _isDragging = false);
+            widget.onDragEnd();
           },
           onDoubleTap: widget.note.isGroup
               ? () {

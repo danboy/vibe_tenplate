@@ -5,9 +5,9 @@ import 'screens/home_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
-import 'screens/groups_screen.dart';
 import 'screens/group_workspace_screen.dart';
 import 'screens/group_detail_screen.dart';
+import 'screens/join_screen.dart';
 import 'screens/project_slideshow_screen.dart';
 
 GoRouter createRouter(AuthProvider auth) => GoRouter(
@@ -29,6 +29,13 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
             path: '/auth/register',
             builder: (_, __) => const RegisterScreen()),
 
+        GoRoute(
+          path: '/join',
+          builder: (_, state) => JoinScreen(
+            code: state.uri.queryParameters['code'] ?? '',
+          ),
+        ),
+
         // Slideshow is full-screen — outside the shell
         GoRoute(
           path: '/groups/:groupSlug/projects/:projectSlug',
@@ -48,7 +55,7 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
             ),
             GoRoute(
               path: '/discover',
-              builder: (_, __) => const GroupsScreen(),
+              redirect: (_, __) => '/groups',
             ),
             GoRoute(
               path: '/profile',

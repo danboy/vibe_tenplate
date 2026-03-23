@@ -14,10 +14,14 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   bool _expanded = true;
+  String? _lastGroupSlug;
 
   @override
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
+    final groupSlug = _groupSlug(location);
+    if (groupSlug != null) _lastGroupSlug = groupSlug;
+    final effectiveGroupSlug = groupSlug ?? _lastGroupSlug;
     final selectedIndex = _navIndex(location);
 
     return Scaffold(
@@ -26,6 +30,7 @@ class _AppShellState extends State<AppShell> {
           _Sidebar(
             expanded: _expanded,
             selectedIndex: selectedIndex,
+            groupSlug: effectiveGroupSlug,
             onToggle: () => setState(() => _expanded = !_expanded),
           ),
           VerticalDivider(
@@ -39,21 +44,27 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  String? _groupSlug(String location) {
+    final m = RegExp(r'^/groups/([^/]+)').firstMatch(location);
+    return m?.group(1);
+  }
+
   int _navIndex(String location) {
-    if (location.startsWith('/discover')) return 1;
-    if (location.startsWith('/profile')) return 2;
-    return 0;
+    if (_groupSlug(location) != null) return 0;
+    return -1;
   }
 }
 
 class _Sidebar extends StatelessWidget {
   final bool expanded;
   final int selectedIndex;
+  final String? groupSlug;
   final VoidCallback onToggle;
 
   const _Sidebar({
     required this.expanded,
     required this.selectedIndex,
+    required this.groupSlug,
     required this.onToggle,
   });
 
@@ -99,34 +110,18 @@ class _Sidebar extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           _SidebarItem(
-            icon: Icons.group_outlined,
-            selectedIcon: Icons.group,
-            label: 'My Groups',
+            icon: Icons.grid_view_outlined,
+            selectedIcon: Icons.grid_view,
+            label: 'Projects',
             selected: selectedIndex == 0,
             expanded: expanded,
-            onTap: () => context.go('/groups'),
-          ),
-          _SidebarItem(
-            icon: Icons.explore_outlined,
-            selectedIcon: Icons.explore,
-            label: 'Discover',
-            selected: selectedIndex == 1,
-            expanded: expanded,
-            onTap: () => context.go('/discover'),
-          ),
-          _SidebarItem(
-            icon: Icons.person_outline,
-            selectedIcon: Icons.person,
-            label: 'Profile',
-            selected: selectedIndex == 2,
-            expanded: expanded,
-            onTap: () => context.go('/profile'),
+            onTap: () => context.go(
+              groupSlug != null ? '/groups/$groupSlug' : '/groups',
+            ),
           ),
           const Spacer(),
-          if (expanded) ...[
-            Container(height: 1, color: theme.colorScheme.outlineVariant),
-            _UserFooter(),
-          ],
+          Container(height: 1, color: theme.colorScheme.outlineVariant),
+          _UserFooter(expanded: expanded),
         ],
       ),
     );
@@ -195,50 +190,80 @@ class _SidebarItem extends StatelessWidget {
 }
 
 class _UserFooter extends StatelessWidget {
+  final bool expanded;
+  const _UserFooter({required this.expanded});
+
   @override
   Widget build(BuildContext context) {
-    final user = context.watch<AuthProvider>().user;
+    final auth = context.watch<AuthProvider>();
+    final user = auth.user;
     if (user == null) return const SizedBox.shrink();
     final theme = Theme.of(context);
 
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 14,
-            backgroundColor: theme.colorScheme.primaryContainer,
-            child: Text(
-              user.username[0].toUpperCase(),
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: theme.colorScheme.onPrimaryContainer,
+    final avatar = CircleAvatar(
+      radius: 14,
+      backgroundColor: theme.colorScheme.primaryContainer,
+      child: Text(
+        user.username[0].toUpperCase(),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: theme.colorScheme.onPrimaryContainer,
+        ),
+      ),
+    );
+
+    return PopupMenuButton<String>(
+      onSelected: (value) {
+        if (value == 'groups') context.go('/groups');
+        if (value == 'profile') context.go('/profile');
+        if (value == 'logout') auth.logout();
+      },
+      offset: const Offset(0, -8),
+      position: PopupMenuPosition.over,
+      itemBuilder: (_) => [
+        const PopupMenuItem(value: 'groups', child: Text('My Groups')),
+        const PopupMenuItem(value: 'profile', child: Text('Profile')),
+        const PopupMenuDivider(),
+        const PopupMenuItem(value: 'logout', child: Text('Log out')),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: expanded
+            ? Row(
+                children: [
+                  avatar,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          user.username,
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          user.email,
+                          style: const TextStyle(
+                              fontSize: 11, color: Color(0xFF888888)),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.more_vert,
+                      size: 16, color: Color(0xFF888888)),
+                ],
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  avatar,
+                ],
               ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  user.username,
-                  style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  user.email,
-                  style: const TextStyle(
-                      fontSize: 11, color: Color(0xFF888888)),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

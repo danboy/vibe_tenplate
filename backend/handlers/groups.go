@@ -203,6 +203,42 @@ func (h *GroupHandler) JoinGroup(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "successfully joined group"})
 }
 
+func (h *GroupHandler) JoinByCode(c *gin.Context) {
+	userID := c.MustGet("userID").(string)
+
+	var req JoinGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.Code == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "code is required"})
+		return
+	}
+
+	var group models.Group
+	if err := h.db.Preload("Members").Where("join_code = ? AND is_private = ?", req.Code, true).First(&group).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invalid invite code"})
+		return
+	}
+
+	for _, m := range group.Members {
+		if m.ID == userID {
+			c.JSON(http.StatusOK, gin.H{"slug": group.Slug, "name": group.Name})
+			return
+		}
+	}
+
+	var user models.User
+	if err := h.db.Where("id = ?", userID).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	if err := h.db.Model(&group).Association("Members").Append(&user); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to join group"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"slug": group.Slug, "name": group.Name})
+}
+
 func (h *GroupHandler) LeaveGroup(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
 	slug := c.Param("id")

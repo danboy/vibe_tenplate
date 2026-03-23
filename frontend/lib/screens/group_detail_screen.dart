@@ -255,9 +255,66 @@ class _GroupHeader extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: 10),
+              _InviteLink(group: group),
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _InviteLink extends StatelessWidget {
+  final Group group;
+  const _InviteLink({required this.group});
+
+  String get _link {
+    final base = Uri.base;
+    return Uri(
+      scheme: base.scheme,
+      host: base.host,
+      port: base.port,
+      path: '/join',
+      queryParameters: {'code': group.joinCode},
+    ).toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final link = _link;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: theme.colorScheme.outline),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.link, size: 16, color: Colors.grey),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              link,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.copy_outlined, size: 18),
+            tooltip: 'Copy invite link',
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: link));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text('Invite link copied'),
+                    duration: Duration(seconds: 2)),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

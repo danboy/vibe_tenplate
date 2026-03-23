@@ -59,6 +59,7 @@ func main() {
 			protected.GET("/users/me/groups", groupHandler.GetMyGroups)
 			protected.GET("/groups", groupHandler.ListGroups)
 			protected.POST("/groups", groupHandler.CreateGroup)
+			protected.POST("/groups/join-by-code", groupHandler.JoinByCode)
 			protected.GET("/groups/:id", groupHandler.GetGroup)
 			protected.POST("/groups/:id/join", groupHandler.JoinGroup)
 			protected.POST("/groups/:id/leave", groupHandler.LeaveGroup)

@@ -25,6 +25,7 @@ class _App extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLoading = context.watch<AuthProvider>().isLoading;
     return MaterialApp.router(
       title: '10Plate',
       debugShowCheckedModeBanner: false,
@@ -201,6 +202,14 @@ class _App extends StatelessWidget {
         ),
       ),
       routerConfig: router,
+      builder: (context, child) {
+        if (isLoading) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        return child!;
+      },
     );
   }
 }
