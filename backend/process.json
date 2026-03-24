@@ -1,0 +1,10 @@
+{
+  "apps" : [
+    {
+      "name"   : "tenplate",
+      "script" : "./main",
+      "watch"  : true,
+      "exec_mode" : "fork"
+    }
+  ]
+}
