@@ -2,7 +2,7 @@
   "apps" : [
     {
       "name"   : "tenplate",
-      "script" : "./main",
+      "script" : "go run main.go",
       "watch"  : true,
       "exec_mode" : "fork"
     }
