@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/error_banner.dart';
@@ -61,12 +62,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  SvgPicture.asset('assets/logo.svg', height: 128),
+                  const SizedBox(height: 8),
                   Text(
                     'Join 10Plate',
                     style: Theme.of(context)
                         .textTheme
                         .headlineSmall
                         ?.copyWith(fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   Text(

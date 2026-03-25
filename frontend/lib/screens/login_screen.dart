@@ -59,7 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    SvgPicture.asset('assets/logo.svg', height: 64),
+                    SvgPicture.asset('assets/logo.svg', height: 128),
                     const SizedBox(height: 8),
                     Text(
                       '10Plate',
