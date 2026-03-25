@@ -3,6 +3,21 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 
+// Provides the outer drawer opener to child screens so they can show a
+// hamburger button on mobile without needing a nested-Scaffold hack.
+class AppShellScope extends InheritedWidget {
+  final VoidCallback? openDrawer;
+
+  const AppShellScope({super.key, this.openDrawer, required super.child});
+
+  /// Returns the drawer-open callback, or null when not on mobile.
+  static VoidCallback? drawerOpener(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<AppShellScope>()?.openDrawer;
+
+  @override
+  bool updateShouldNotify(AppShellScope old) => openDrawer != old.openDrawer;
+}
+
 class AppShell extends StatefulWidget {
   final Widget child;
 
@@ -15,34 +30,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   bool _expanded = true;
   String? _lastGroupSlug;
-
-  @override
-  Widget build(BuildContext context) {
-    final location = GoRouterState.of(context).matchedLocation;
-    final groupSlug = _groupSlug(location);
-    if (groupSlug != null) _lastGroupSlug = groupSlug;
-    final effectiveGroupSlug = groupSlug ?? _lastGroupSlug;
-    final selectedIndex = _navIndex(location);
-
-    return Scaffold(
-      body: Row(
-        children: [
-          _Sidebar(
-            expanded: _expanded,
-            selectedIndex: selectedIndex,
-            groupSlug: effectiveGroupSlug,
-            onToggle: () => setState(() => _expanded = !_expanded),
-          ),
-          VerticalDivider(
-            width: 1,
-            thickness: 1,
-            color: Theme.of(context).colorScheme.outline,
-          ),
-          Expanded(child: widget.child),
-        ],
-      ),
-    );
-  }
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   String? _groupSlug(String location) {
     final m = RegExp(r'^/groups/([^/]+)').firstMatch(location);
@@ -53,33 +41,127 @@ class _AppShellState extends State<AppShell> {
     if (_groupSlug(location) != null) return 0;
     return -1;
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final location = GoRouterState.of(context).matchedLocation;
+    final groupSlug = _groupSlug(location);
+    if (groupSlug != null) _lastGroupSlug = groupSlug;
+    final effectiveGroupSlug = groupSlug ?? _lastGroupSlug;
+    final selectedIndex = _navIndex(location);
+    final width = MediaQuery.of(context).size.width;
+    final isMobile = width < 600;
+    final isTablet = width >= 600 && width < 900;
+
+    if (isMobile) {
+      return AppShellScope(
+        openDrawer: () => _scaffoldKey.currentState?.openDrawer(),
+        child: Scaffold(
+          key: _scaffoldKey,
+          drawer: Drawer(
+            child: SafeArea(
+              child: _SidebarContent(
+                expanded: true,
+                selectedIndex: selectedIndex,
+                groupSlug: effectiveGroupSlug,
+                showToggle: false,
+                onToggle: null,
+                onItemTap: () => _scaffoldKey.currentState?.closeDrawer(),
+              ),
+            ),
+          ),
+          body: widget.child,
+        ),
+      );
+    }
+
+    return AppShellScope(
+      child: Scaffold(
+        body: Row(
+          children: [
+            _Sidebar(
+              expanded: isTablet ? false : _expanded,
+              selectedIndex: selectedIndex,
+              groupSlug: effectiveGroupSlug,
+              onToggle: isTablet
+                  ? null
+                  : () => setState(() => _expanded = !_expanded),
+            ),
+            VerticalDivider(
+              width: 1,
+              thickness: 1,
+              color: Theme.of(context).colorScheme.outline,
+            ),
+            Expanded(child: widget.child),
+          ],
+        ),
+      ),
+    );
+  }
 }
+
+// ─── Sidebar (desktop/tablet) ─────────────────────────────────────────────────
 
 class _Sidebar extends StatelessWidget {
   final bool expanded;
   final int selectedIndex;
   final String? groupSlug;
-  final VoidCallback onToggle;
+  final VoidCallback? onToggle;
 
   const _Sidebar({
     required this.expanded,
     required this.selectedIndex,
-    required this.groupSlug,
-    required this.onToggle,
+    this.groupSlug,
+    this.onToggle,
   });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
       width: expanded ? 200.0 : 56.0,
       color: Colors.white,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+      child: _SidebarContent(
+        expanded: expanded,
+        selectedIndex: selectedIndex,
+        groupSlug: groupSlug,
+        showToggle: onToggle != null,
+        onToggle: onToggle,
+        onItemTap: null,
+      ),
+    );
+  }
+}
+
+// ─── Sidebar content (shared between rail and drawer) ────────────────────────
+
+class _SidebarContent extends StatelessWidget {
+  final bool expanded;
+  final int selectedIndex;
+  final String? groupSlug;
+  final bool showToggle;
+  final VoidCallback? onToggle;
+  final VoidCallback? onItemTap; // called after nav tap (closes drawer)
+
+  const _SidebarContent({
+    required this.expanded,
+    required this.selectedIndex,
+    this.groupSlug,
+    required this.showToggle,
+    this.onToggle,
+    this.onItemTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasHeader = showToggle || expanded;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (hasHeader)
           Container(
             height: kToolbarHeight,
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -90,13 +172,14 @@ class _Sidebar extends StatelessWidget {
             ),
             child: Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.menu, size: 20),
-                  onPressed: onToggle,
-                  tooltip: expanded ? 'Collapse sidebar' : 'Expand sidebar',
-                ),
+                if (showToggle)
+                  IconButton(
+                    icon: const Icon(Icons.menu, size: 20),
+                    onPressed: onToggle,
+                    tooltip: expanded ? 'Collapse sidebar' : 'Expand sidebar',
+                  ),
                 if (expanded) ...[
-                  const SizedBox(width: 4),
+                  if (showToggle) const SizedBox(width: 4),
                   Text(
                     '10Plate',
                     style: theme.textTheme.titleMedium?.copyWith(
@@ -108,25 +191,29 @@ class _Sidebar extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 8),
-          _SidebarItem(
-            icon: Icons.grid_view_outlined,
-            selectedIcon: Icons.grid_view,
-            label: 'Projects',
-            selected: selectedIndex == 0,
-            expanded: expanded,
-            onTap: () => context.go(
+        const SizedBox(height: 8),
+        _SidebarItem(
+          icon: Icons.grid_view_outlined,
+          selectedIcon: Icons.grid_view,
+          label: 'Projects',
+          selected: selectedIndex == 0,
+          expanded: expanded,
+          onTap: () {
+            context.go(
               groupSlug != null ? '/groups/$groupSlug' : '/groups',
-            ),
-          ),
-          const Spacer(),
-          Container(height: 1, color: theme.colorScheme.outlineVariant),
-          _UserFooter(expanded: expanded),
-        ],
-      ),
+            );
+            onItemTap?.call();
+          },
+        ),
+        const Spacer(),
+        Container(height: 1, color: theme.colorScheme.outlineVariant),
+        _UserFooter(expanded: expanded, onNavigate: onItemTap),
+      ],
     );
   }
 }
+
+// ─── Sidebar item ─────────────────────────────────────────────────────────────
 
 class _SidebarItem extends StatelessWidget {
   final IconData icon;
@@ -189,9 +276,13 @@ class _SidebarItem extends StatelessWidget {
   }
 }
 
+// ─── User footer ──────────────────────────────────────────────────────────────
+
 class _UserFooter extends StatelessWidget {
   final bool expanded;
-  const _UserFooter({required this.expanded});
+  final VoidCallback? onNavigate;
+
+  const _UserFooter({required this.expanded, this.onNavigate});
 
   @override
   Widget build(BuildContext context) {
@@ -215,8 +306,14 @@ class _UserFooter extends StatelessWidget {
 
     return PopupMenuButton<String>(
       onSelected: (value) {
-        if (value == 'groups') context.go('/groups');
-        if (value == 'profile') context.go('/profile');
+        if (value == 'groups') {
+          context.go('/groups');
+          onNavigate?.call();
+        }
+        if (value == 'profile') {
+          context.go('/profile');
+          onNavigate?.call();
+        }
         if (value == 'logout') auth.logout();
       },
       offset: const Offset(0, -8),
@@ -260,9 +357,7 @@ class _UserFooter extends StatelessWidget {
               )
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  avatar,
-                ],
+                children: [avatar],
               ),
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import 'app_shell.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -11,7 +12,17 @@ class ProfileScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile'), centerTitle: false),
+      appBar: AppBar(
+        title: const Text('Profile'),
+        centerTitle: false,
+        actions: [
+          if (AppShellScope.drawerOpener(context) != null)
+            IconButton(
+              icon: const Icon(Icons.menu),
+              onPressed: AppShellScope.drawerOpener(context),
+            ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/group.dart';
+import 'app_shell.dart';
 
 class MyGroupsScreen extends StatefulWidget {
   const MyGroupsScreen({super.key});
@@ -110,6 +111,13 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
       appBar: AppBar(
         title: const Text('My Groups'),
         centerTitle: false,
+        actions: [
+          if (AppShellScope.drawerOpener(context) != null)
+            IconButton(
+              icon: const Icon(Icons.menu),
+              onPressed: AppShellScope.drawerOpener(context),
+            ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showCreateDialog,

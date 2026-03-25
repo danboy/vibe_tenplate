@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/group.dart';
 import '../models/project.dart';
 import '../providers/auth_provider.dart';
+import 'app_shell.dart';
 
 class GroupWorkspaceScreen extends StatefulWidget {
   final String groupSlug;
@@ -302,6 +303,11 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                 onPressed: () =>
                     context.go('/groups/${widget.groupSlug}/members'),
               ),
+              if (AppShellScope.drawerOpener(context) != null)
+                IconButton(
+                  icon: const Icon(Icons.menu),
+                  onPressed: AppShellScope.drawerOpener(context),
+                ),
             ],
           ),
           floatingActionButton: group == null

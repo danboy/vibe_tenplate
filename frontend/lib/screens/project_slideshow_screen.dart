@@ -770,6 +770,7 @@ class _SlideTabBar extends StatelessWidget {
         idx < enabledSlides.length - 1 ? enabledSlides[idx + 1] : null;
     final canPrev = enabled && prevSlide != null;
     final canNext = enabled && nextSlide != null;
+    final showLabels = MediaQuery.of(context).size.width >= 600;
 
     return Container(
       height: 40,
@@ -795,6 +796,7 @@ class _SlideTabBar extends StatelessWidget {
                 label: _slideLabels[i],
                 icon: _slideIcons[i],
                 selected: currentSlide == i,
+                showLabel: showLabels,
                 onTap: enabled ? () => onSlideChanged(i) : null,
               ),
               if (pos < enabledSlides.length - 1)
@@ -855,12 +857,14 @@ class _SlideTab extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool selected;
+  final bool showLabel;
   final VoidCallback? onTap;
 
   const _SlideTab({
     required this.label,
     required this.icon,
     required this.selected,
+    this.showLabel = true,
     required this.onTap,
   });
 
@@ -886,6 +890,7 @@ class _SlideTab extends StatelessWidget {
                 color: selected
                     ? theme.colorScheme.primary
                     : const Color(0xFF888888)),
+            if (showLabel) ...[
             const SizedBox(width: 5),
             Text(
               label,
@@ -898,6 +903,7 @@ class _SlideTab extends StatelessWidget {
                     : const Color(0xFF888888),
               ),
             ),
+            ],
           ],
         ),
       ),
@@ -1723,11 +1729,13 @@ class _CostValueMatrix extends StatelessWidget {
       );
     }
 
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // ── Left list ──────────────────────────────────────────────────────
-        Container(
+        if (!isMobile) Container(
           width: 220,
           decoration: const BoxDecoration(
             color: Colors.white,

@@ -51,7 +51,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Create Account')),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: Center(
+          child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 400),
@@ -142,6 +143,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
           ),
+        ),
         ),
       ),
     );
