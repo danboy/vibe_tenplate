@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -58,8 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(Icons.dinner_dining,
-                        size: 64, color: theme.colorScheme.primary),
+                    SvgPicture.asset('assets/logo.svg', height: 64),
                     const SizedBox(height: 8),
                     Text(
                       '10Plate',

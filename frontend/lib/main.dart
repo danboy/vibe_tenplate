@@ -37,14 +37,14 @@ class _App extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: const ColorScheme.light(
-          primary: Color(0xFF4A90E2),
+          primary: Color(0xFF008080),
           onPrimary: Color(0xFFFFFFFF),
-          primaryContainer: Color(0xFFDBEAFE),
-          onPrimaryContainer: Color(0xFF1A4A7A),
-          secondary: Color(0xFF6C8EBD),
+          primaryContainer: Color(0xFFB2DFDF),
+          onPrimaryContainer: Color(0xFF004040),
+          secondary: Color(0xFF4DAAAA),
           onSecondary: Color(0xFFFFFFFF),
-          secondaryContainer: Color(0xFFEFF6FF),
-          onSecondaryContainer: Color(0xFF2C6FBD),
+          secondaryContainer: Color(0xFFE0F4F4),
+          onSecondaryContainer: Color(0xFF006060),
           error: Color(0xFFE74C3C),
           onError: Color(0xFFFFFFFF),
           errorContainer: Color(0xFFFFDAD6),
@@ -58,7 +58,7 @@ class _App extends StatelessWidget {
           scrim: Color(0xFF000000),
           inverseSurface: Color(0xFF1A1A2E),
           onInverseSurface: Color(0xFFFFFFFF),
-          inversePrimary: Color(0xFF90CAF9),
+          inversePrimary: Color(0xFF80BFBF),
           shadow: Color(0xFF000000),
         ),
         scaffoldBackgroundColor: const Color(0xFFEEF0F4),
@@ -83,7 +83,7 @@ class _App extends StatelessWidget {
         navigationBarTheme: NavigationBarThemeData(
           backgroundColor: const Color(0xFFFFFFFF),
           surfaceTintColor: Colors.transparent,
-          indicatorColor: const Color(0xFFDBEAFE),
+          indicatorColor: const Color(0xFFB2DFDF),
           elevation: 0,
           shadowColor: Colors.transparent,
           labelTextStyle: WidgetStateProperty.resolveWith((states) {
@@ -92,7 +92,7 @@ class _App extends StatelessWidget {
               fontSize: 11,
               fontWeight: active ? FontWeight.w600 : FontWeight.w400,
               color: active
-                  ? const Color(0xFF4A90E2)
+                  ? const Color(0xFF008080)
                   : const Color(0xFF888888),
             );
           }),
@@ -100,7 +100,7 @@ class _App extends StatelessWidget {
             final active = states.contains(WidgetState.selected);
             return IconThemeData(
               color: active
-                  ? const Color(0xFF4A90E2)
+                  ? const Color(0xFF008080)
                   : const Color(0xFF888888),
               size: 22,
             );
@@ -128,7 +128,7 @@ class _App extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(7),
-            borderSide: const BorderSide(color: Color(0xFF4A90E2), width: 1.5),
+            borderSide: const BorderSide(color: Color(0xFF008080), width: 1.5),
           ),
           labelStyle: const TextStyle(color: Color(0xFF888888), fontSize: 13),
           hintStyle: const TextStyle(color: Color(0xFFBBBBBB), fontSize: 13),
@@ -137,7 +137,7 @@ class _App extends StatelessWidget {
         ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFF4A90E2),
+            backgroundColor: const Color(0xFF008080),
             foregroundColor: const Color(0xFFFFFFFF),
             textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
@@ -146,7 +146,7 @@ class _App extends StatelessWidget {
         ),
         textButtonTheme: TextButtonThemeData(
           style: TextButton.styleFrom(
-            foregroundColor: const Color(0xFF4A90E2),
+            foregroundColor: const Color(0xFF008080),
             textStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
           ),
@@ -177,7 +177,7 @@ class _App extends StatelessWidget {
           ),
         ),
         floatingActionButtonTheme: FloatingActionButtonThemeData(
-          backgroundColor: const Color(0xFF4A90E2),
+          backgroundColor: const Color(0xFF008080),
           foregroundColor: const Color(0xFFFFFFFF),
           elevation: 3,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
