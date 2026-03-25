@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/group.dart';
@@ -15,8 +16,10 @@ class ApiException implements Exception {
 }
 
 class ApiService {
-  static const String baseUrl = 'http://localhost:8080/api';
-  static const String wsBaseUrl = 'ws://localhost:8080';
+  static String get baseUrl =>
+      dotenv.get('BASE_URL', fallback: 'http://localhost:8080/api');
+  static String get wsBaseUrl =>
+      dotenv.get('WS_BASE_URL', fallback: 'ws://localhost:8080');
 
   final String? token;
 

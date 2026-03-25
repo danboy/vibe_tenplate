@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/group.dart';
 import '../models/project.dart';
@@ -590,6 +591,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
     final isCostValueMode = _slide == 3 && enablePrioritise;
     final isPresenter = _isPresenter;
     final canAssign = _canAssignPresenter;
+    final currentUserId = context.read<AuthProvider>().user?.id ?? '';
     final presenterLabel = _project?.presenterUsername
         ?? _project?.creatorUsername
         ?? '';
@@ -648,7 +650,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
           ),
         ],
       ),
-      floatingActionButton: (_slide != 0 || !isPresenter)
+      floatingActionButton: _slide != 0
           ? null
           : FloatingActionButton.extended(
               onPressed: _showAddNoteDialog,
@@ -727,6 +729,9 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
                               setState(() => _isDraggingNote = true),
                           onNoteDragEnd: () =>
                               setState(() => _isDraggingNote = false),
+                          currentUserId: currentUserId,
+                          isPresenter: isPresenter,
+                          isOwner: canAssign,
                         ),
                       ),
                     ),
@@ -919,6 +924,9 @@ class _InfiniteCanvas extends StatelessWidget {
   final void Function(String groupId) onGroupDragEnd;
   final VoidCallback onNoteDragStart;
   final VoidCallback onNoteDragEnd;
+  final String currentUserId;
+  final bool isPresenter;
+  final bool isOwner;
 
   const _InfiniteCanvas({
     required this.notes,
@@ -936,6 +944,9 @@ class _InfiniteCanvas extends StatelessWidget {
     required this.onGroupDragEnd,
     required this.onNoteDragStart,
     required this.onNoteDragEnd,
+    required this.currentUserId,
+    required this.isPresenter,
+    required this.isOwner,
   });
 
   @override
@@ -1041,6 +1052,7 @@ class _InfiniteCanvas extends StatelessWidget {
                 onGroupDragEnd: onGroupDragEnd,
                 onDragStart: onNoteDragStart,
                 onDragEnd: onNoteDragEnd,
+                canDelete: isPresenter || isOwner || note.createdBy == currentUserId,
               );
             }),
           ],
@@ -1197,6 +1209,7 @@ class _PositionedNote extends StatefulWidget {
   final void Function(String groupId) onGroupDragEnd;
   final VoidCallback onDragStart;
   final VoidCallback onDragEnd;
+  final bool canDelete;
 
   const _PositionedNote({
     super.key,
@@ -1216,6 +1229,7 @@ class _PositionedNote extends StatefulWidget {
     required this.onGroupDragEnd,
     required this.onDragStart,
     required this.onDragEnd,
+    required this.canDelete,
   });
 
   @override
@@ -1268,33 +1282,6 @@ class _PositionedNoteState extends State<_PositionedNote> {
     setState(() => _isEditing = false);
     if (_editCtrl.text != widget.note.content) {
       widget.onUpdate(widget.note.id, _editCtrl.text);
-    }
-  }
-
-  Future<void> _showEditDialog() async {
-    final ctrl = TextEditingController(text: widget.note.content);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit Note'),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(),
-          maxLines: 4,
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save')),
-        ],
-      ),
-    );
-    if (confirmed == true && ctrl.text.trim().isNotEmpty) {
-      widget.onUpdate(widget.note.id, ctrl.text.trim());
     }
   }
 
@@ -1355,18 +1342,17 @@ class _PositionedNoteState extends State<_PositionedNote> {
             setState(() => _isDragging = false);
             widget.onDragEnd();
           },
-          onDoubleTap: widget.note.isGroup
-              ? () {
-                  setState(() => _isEditing = true);
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    _editFocusNode.requestFocus();
-                  });
-                }
-              : _showEditDialog,
+          onDoubleTap: () {
+            setState(() => _isEditing = true);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _editFocusNode.requestFocus();
+            });
+          },
           child: _NoteCard(
             note: widget.note,
             isGroupingMode: widget.isGroupingMode,
             onDelete: () => widget.onDelete(widget.note.id),
+            showActions: widget.canDelete,
             isEditing: _isEditing,
             editController: _editCtrl,
             editFocusNode: _editFocusNode,
@@ -1427,15 +1413,55 @@ class _NoteCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    note.content,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: textColor,
-                      height: 1.45,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
+                  isEditing
+                      ? TextField(
+                          controller: editController,
+                          focusNode: editFocusNode,
+                          autofocus: true,
+                          maxLines: null,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: textColor,
+                            height: 1.45,
+                            fontFamily: 'monospace',
+                          ),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                            border: InputBorder.none,
+                          ),
+                          onSubmitted: (_) => onEditDone?.call(),
+                        )
+                      : MarkdownBody(
+                          data: note.content,
+                          styleSheet: MarkdownStyleSheet(
+                            p: TextStyle(
+                              fontSize: 13,
+                              color: textColor,
+                              height: 1.45,
+                            ),
+                            strong: TextStyle(
+                              fontSize: 13,
+                              color: textColor,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            em: TextStyle(
+                              fontSize: 13,
+                              color: textColor,
+                              fontStyle: FontStyle.italic,
+                            ),
+                            code: TextStyle(
+                              fontSize: 12,
+                              color: textColor,
+                              fontFamily: 'monospace',
+                              backgroundColor: Colors.black12,
+                            ),
+                            listBullet: TextStyle(
+                              fontSize: 13,
+                              color: textColor,
+                            ),
+                          ),
+                        ),
                   const SizedBox(height: 10),
                   Row(
                     children: [
