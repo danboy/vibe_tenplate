@@ -21,6 +21,8 @@ class ApiService {
   static String get wsBaseUrl =>
       dotenv.get('WS_BASE_URL', fallback: 'ws://localhost:8080');
 
+  static const _timeout = Duration(seconds: 15);
+
   final String? token;
 
   const ApiService({this.token});
@@ -29,6 +31,21 @@ class ApiService {
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',
       };
+
+  Future<http.Response> _get(Uri url) =>
+      http.get(url, headers: _headers).timeout(_timeout);
+
+  Future<http.Response> _post(Uri url, {String? body}) =>
+      http.post(url, headers: _headers, body: body).timeout(_timeout);
+
+  Future<http.Response> _put(Uri url, {String? body}) =>
+      http.put(url, headers: _headers, body: body).timeout(_timeout);
+
+  Future<http.Response> _patch(Uri url, {String? body}) =>
+      http.patch(url, headers: _headers, body: body).timeout(_timeout);
+
+  Future<http.Response> _delete(Uri url) =>
+      http.delete(url, headers: _headers).timeout(_timeout);
 
   Future<Map<String, dynamic>> _parseMap(http.Response response) {
     Map<String, dynamic> body;
@@ -68,9 +85,8 @@ class ApiService {
     required String email,
     required String password,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/auth/register'),
-      headers: _headers,
       body: json.encode({
         'username': username,
         'email': email,
@@ -88,9 +104,8 @@ class ApiService {
     required String email,
     required String password,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/auth/login'),
-      headers: _headers,
       body: json.encode({'email': email, 'password': password}),
     );
     final data = await _parseMap(response);
@@ -101,10 +116,7 @@ class ApiService {
   }
 
   Future<User> getMe() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/users/me'),
-      headers: _headers,
-    );
+    final response = await _get(Uri.parse('$baseUrl/users/me'));
     final data = await _parseMap(response);
     return User.fromJson(data);
   }
@@ -112,19 +124,13 @@ class ApiService {
   // ── Groups ──────────────────────────────────────────────────────────────────
 
   Future<List<Group>> listGroups() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/groups'),
-      headers: _headers,
-    );
+    final response = await _get(Uri.parse('$baseUrl/groups'));
     final list = await _parseList(response);
     return list.map((g) => Group.fromJson(g as Map<String, dynamic>)).toList();
   }
 
   Future<Group> getGroup(String slug) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/groups/$slug'),
-      headers: _headers,
-    );
+    final response = await _get(Uri.parse('$baseUrl/groups/$slug'));
     final data = await _parseMap(response);
     return Group.fromJson(data);
   }
@@ -134,9 +140,8 @@ class ApiService {
     required String description,
     bool isPrivate = false,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/groups'),
-      headers: _headers,
       body: json.encode({
         'name': name,
         'description': description,
@@ -148,9 +153,8 @@ class ApiService {
   }
 
   Future<({String slug, String name})> joinByCode(String code) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/groups/join-by-code'),
-      headers: _headers,
       body: json.encode({'code': code}),
     );
     final data = await _parseMap(response);
@@ -158,27 +162,20 @@ class ApiService {
   }
 
   Future<void> joinGroup(String slug, {String? code}) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/groups/$slug/join'),
-      headers: _headers,
       body: code != null ? json.encode({'code': code}) : null,
     );
     await _parseMap(response);
   }
 
   Future<void> leaveGroup(String slug) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/groups/$slug/leave'),
-      headers: _headers,
-    );
+    final response = await _post(Uri.parse('$baseUrl/groups/$slug/leave'));
     await _parseMap(response);
   }
 
   Future<List<Group>> getMyGroups() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/users/me/groups'),
-      headers: _headers,
-    );
+    final response = await _get(Uri.parse('$baseUrl/users/me/groups'));
     final list = await _parseList(response);
     return list.map((g) => Group.fromJson(g as Map<String, dynamic>)).toList();
   }
@@ -186,10 +183,7 @@ class ApiService {
   // ── Projects ────────────────────────────────────────────────────────────────
 
   Future<List<Project>> listProjects(String groupSlug) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/groups/$groupSlug/projects'),
-      headers: _headers,
-    );
+    final response = await _get(Uri.parse('$baseUrl/groups/$groupSlug/projects'));
     final list = await _parseList(response);
     return list
         .map((p) => Project.fromJson(p as Map<String, dynamic>))
@@ -200,9 +194,8 @@ class ApiService {
     required String groupSlug,
     required String projectSlug,
   }) async {
-    final response = await http.get(
+    final response = await _get(
       Uri.parse('$baseUrl/groups/$groupSlug/projects/$projectSlug'),
-      headers: _headers,
     );
     final data = await _parseMap(response);
     return Project.fromJson(data);
@@ -215,9 +208,8 @@ class ApiService {
     required bool enableVote,
     required bool enablePrioritise,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/groups/$groupSlug/projects'),
-      headers: _headers,
       body: json.encode({
         'name': name,
         'description': description,
@@ -237,9 +229,8 @@ class ApiService {
     required bool enableVote,
     required bool enablePrioritise,
   }) async {
-    final response = await http.patch(
+    final response = await _patch(
       Uri.parse('$baseUrl/groups/$groupSlug/projects/$projectSlug'),
-      headers: _headers,
       body: json.encode({
         'name': name,
         'description': description,
@@ -255,9 +246,8 @@ class ApiService {
     required String groupSlug,
     required String projectSlug,
   }) async {
-    final response = await http.delete(
+    final response = await _delete(
       Uri.parse('$baseUrl/groups/$groupSlug/projects/$projectSlug'),
-      headers: _headers,
     );
     await _parseMap(response);
   }
@@ -267,9 +257,8 @@ class ApiService {
     required String projectSlug,
     String? userId,
   }) async {
-    final response = await http.put(
+    final response = await _put(
       Uri.parse('$baseUrl/groups/$groupSlug/projects/$projectSlug/presenter'),
-      headers: _headers,
       body: json.encode({'user_id': userId}),
     );
     final data = await _parseMap(response);

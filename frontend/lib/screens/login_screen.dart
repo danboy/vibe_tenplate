@@ -118,7 +118,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 12),
                     TextButton(
-                      onPressed: () => context.push('/auth/register'),
+                      onPressed: () {
+                        final redirect = GoRouterState.of(context)
+                            .uri
+                            .queryParameters['redirect'];
+                        final dest = redirect != null
+                            ? '/auth/register?redirect=${Uri.encodeComponent(redirect)}'
+                            : '/auth/register';
+                        context.push(dest);
+                      },
                       child: const Text("Don't have an account? Register"),
                     ),
                   ],

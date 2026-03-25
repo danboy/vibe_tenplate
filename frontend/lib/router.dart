@@ -18,8 +18,20 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
         final loc = state.matchedLocation;
         final isOnAuthPage =
             loc.startsWith('/auth/login') || loc.startsWith('/auth/register');
-        if (!auth.isAuthenticated && !isOnAuthPage) return '/auth/login';
-        if (auth.isAuthenticated && isOnAuthPage) return '/groups';
+
+        if (!auth.isAuthenticated && !isOnAuthPage) {
+          final dest = Uri.encodeComponent(state.uri.toString());
+          return '/auth/login?redirect=$dest';
+        }
+
+        if (auth.isAuthenticated && isOnAuthPage) {
+          final redirectTo = state.uri.queryParameters['redirect'];
+          if (redirectTo != null && redirectTo.startsWith('/')) {
+            return redirectTo;
+          }
+          return '/groups';
+        }
+
         return null;
       },
       routes: [

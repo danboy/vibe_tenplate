@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:go_router/go_router.dart';
+import 'url_strategy_stub.dart'
+    if (dart.library.html) 'url_strategy_web.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load();
+  const envFile = String.fromEnvironment('ENV', defaultValue: '.env');
+  await dotenv.load(fileName: envFile);
   usePathUrlStrategy();
   final auth = AuthProvider();
   final router = createRouter(auth);
