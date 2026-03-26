@@ -22,6 +22,8 @@ func NewProjectHandler(db *gorm.DB) *ProjectHandler {
 type CreateProjectRequest struct {
 	Name             string `json:"name" binding:"required,min=2"`
 	Description      string `json:"description"`
+	ProblemStatement string `json:"problem_statement"`
+	EnableProblem    bool   `json:"enable_problem"`
 	EnableVote       bool   `json:"enable_vote"`
 	EnablePrioritise bool   `json:"enable_prioritise"`
 }
@@ -106,8 +108,10 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		Name:             req.Name,
 		Slug:             slug,
 		Description:      req.Description,
+		ProblemStatement: req.ProblemStatement,
 		GroupID:          group.ID,
 		CreatedBy:        userID,
+		EnableProblem:    req.EnableProblem,
 		EnableVote:       req.EnableVote,
 		EnablePrioritise: req.EnablePrioritise,
 	}
@@ -119,6 +123,7 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	// UpdateColumns with a map always sets the value even when false,
 	// because GORM's zero-value skip only applies to struct-based updates.
 	h.db.Model(&project).UpdateColumns(map[string]any{
+		"enable_problem":    req.EnableProblem,
 		"enable_vote":       req.EnableVote,
 		"enable_prioritise": req.EnablePrioritise,
 	})
@@ -203,6 +208,8 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 	var req struct {
 		Name             string `json:"name" binding:"required,min=2"`
 		Description      string `json:"description"`
+		ProblemStatement string `json:"problem_statement"`
+		EnableProblem    bool   `json:"enable_problem"`
 		EnableVote       bool   `json:"enable_vote"`
 		EnablePrioritise bool   `json:"enable_prioritise"`
 	}
@@ -214,6 +221,8 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 	h.db.Model(&project).UpdateColumns(map[string]any{
 		"name":              req.Name,
 		"description":       req.Description,
+		"problem_statement": req.ProblemStatement,
+		"enable_problem":    req.EnableProblem,
 		"enable_vote":       req.EnableVote,
 		"enable_prioritise": req.EnablePrioritise,
 	})

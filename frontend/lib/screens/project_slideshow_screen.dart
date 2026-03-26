@@ -114,9 +114,11 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
         api.getGroup(widget.groupSlug),
       ]);
       if (!mounted) return;
+      final project = results[0] as Project;
       setState(() {
-        _project = results[0] as Project;
+        _project = project;
         _group = results[1] as Group;
+        if (!project.enableProblem && _slide == 0) _slide = 1;
       });
       _connect(_project!.id);
     } catch (_) {}
@@ -595,6 +597,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
   Widget build(BuildContext context) {
     final isProblemMode = _slide == 0;
     final isGroupingMode = _slide == 2;
+    final enableProblem = _project?.enableProblem ?? true;
     final enableVote = _project?.enableVote ?? false;
     final enablePrioritise = _project?.enablePrioritise ?? false;
     final isVotingMode = _slide == 3 && enableVote;
@@ -607,7 +610,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
         ?? '';
 
     final enabledSlides = [
-      0,
+      if (enableProblem) 0,
       1,
       2,
       if (enableVote) 3,

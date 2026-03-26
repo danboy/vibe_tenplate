@@ -38,7 +38,9 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
   Future<void> _showCreateDialog(Group group) async {
     final nameCtrl = TextEditingController();
     final descCtrl = TextEditingController();
+    final problemCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
+    var enableProblem = true;
     var enableVote = true;
     var enablePrioritise = true;
 
@@ -72,6 +74,15 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                   ),
                   maxLines: 3,
                 ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: problemCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Problem statement (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                ),
                 const SizedBox(height: 16),
                 Text('Optional slides',
                     style: TextStyle(
@@ -79,6 +90,14 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                         fontWeight: FontWeight.w600,
                         color: Colors.grey[600])),
                 const SizedBox(height: 4),
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Problem Statement'),
+                  subtitle: const Text('Collaborative problem statement editor'),
+                  value: enableProblem,
+                  onChanged: (v) => setLocal(() => enableProblem = v ?? true),
+                ),
                 CheckboxListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
@@ -125,6 +144,8 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
         groupSlug: widget.groupSlug,
         name: nameCtrl.text.trim(),
         description: descCtrl.text.trim(),
+        problemStatement: problemCtrl.text.trim(),
+        enableProblem: enableProblem,
         enableVote: enableVote,
         enablePrioritise: enablePrioritise,
       );
@@ -140,7 +161,9 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
   Future<void> _showEditDialog(Project project) async {
     final nameCtrl = TextEditingController(text: project.name);
     final descCtrl = TextEditingController(text: project.description);
+    final problemCtrl = TextEditingController(text: project.problemStatement);
     final formKey = GlobalKey<FormState>();
+    var enableProblem = project.enableProblem;
     var enableVote = project.enableVote;
     var enablePrioritise = project.enablePrioritise;
 
@@ -174,6 +197,15 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                   ),
                   maxLines: 3,
                 ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: problemCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Problem statement (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                ),
                 const SizedBox(height: 16),
                 Text('Optional slides',
                     style: TextStyle(
@@ -181,6 +213,14 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                         fontWeight: FontWeight.w600,
                         color: Colors.grey[600])),
                 const SizedBox(height: 4),
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Problem Statement'),
+                  subtitle: const Text('Collaborative problem statement editor'),
+                  value: enableProblem,
+                  onChanged: (v) => setLocal(() => enableProblem = v ?? true),
+                ),
                 CheckboxListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
@@ -228,6 +268,8 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
         projectSlug: project.slug,
         name: nameCtrl.text.trim(),
         description: descCtrl.text.trim(),
+        problemStatement: problemCtrl.text.trim(),
+        enableProblem: enableProblem,
         enableVote: enableVote,
         enablePrioritise: enablePrioritise,
       );

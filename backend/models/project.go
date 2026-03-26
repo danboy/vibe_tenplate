@@ -20,6 +20,7 @@ type Project struct {
 	Creator     *User          `json:"creator,omitempty"   gorm:"foreignKey:CreatedBy"`
 	PresenterID      *string        `json:"presenter_id"        gorm:"type:text"`
 	Presenter        *User          `json:"presenter,omitempty" gorm:"foreignKey:PresenterID"`
+	EnableProblem      bool   `json:"enable_problem"      gorm:"not null;default:true"`
 	EnableVote         bool   `json:"enable_vote"         gorm:"not null;default:true"`
 	EnablePrioritise   bool   `json:"enable_prioritise"   gorm:"not null;default:true"`
 	ProblemStatement   string `json:"problem_statement"   gorm:"type:text;not null;default:''"`

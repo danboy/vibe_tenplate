@@ -205,6 +205,8 @@ class ApiService {
     required String groupSlug,
     required String name,
     required String description,
+    required String problemStatement,
+    required bool enableProblem,
     required bool enableVote,
     required bool enablePrioritise,
   }) async {
@@ -213,6 +215,8 @@ class ApiService {
       body: json.encode({
         'name': name,
         'description': description,
+        'problem_statement': problemStatement,
+        'enable_problem': enableProblem,
         'enable_vote': enableVote,
         'enable_prioritise': enablePrioritise,
       }),
@@ -226,6 +230,8 @@ class ApiService {
     required String projectSlug,
     required String name,
     required String description,
+    required String problemStatement,
+    required bool enableProblem,
     required bool enableVote,
     required bool enablePrioritise,
   }) async {
@@ -234,6 +240,8 @@ class ApiService {
       body: json.encode({
         'name': name,
         'description': description,
+        'problem_statement': problemStatement,
+        'enable_problem': enableProblem,
         'enable_vote': enableVote,
         'enable_prioritise': enablePrioritise,
       }),

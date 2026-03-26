@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -180,11 +181,20 @@ class _SidebarContent extends StatelessWidget {
                   ),
                 if (expanded) ...[
                   if (showToggle) const SizedBox(width: 4),
+                  SvgPicture.asset('assets/logo.svg', width: 24, height: 24),
+                  const SizedBox(width: 8),
                   Text(
                     '10Plate',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                       letterSpacing: -0.3,
+                    ),
+                  ),
+                ] else if (!showToggle) ...[
+                  Expanded(
+                    child: Center(
+                      child: SvgPicture.asset('assets/logo.svg',
+                          width: 24, height: 24),
                     ),
                   ),
                 ],
