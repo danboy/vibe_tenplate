@@ -109,11 +109,19 @@ func (h *Hub) sendInit(client *Client) {
 		votes = []models.NoteVote{}
 	}
 
+	var project models.Project
+	h.db.Where("id = ?", h.projectID).First(&project)
+
 	h.mu.Lock()
 	slide := h.currentSlide
 	h.mu.Unlock()
 
-	data, err := buildMessage("init", map[string]any{"notes": notes, "slide": slide, "votes": votes})
+	data, err := buildMessage("init", map[string]any{
+		"notes":              notes,
+		"slide":              slide,
+		"votes":              votes,
+		"problem_statement":  project.ProblemStatement,
+	})
 	if err != nil {
 		log.Println("ws: sendInit build error:", err)
 		return
@@ -138,6 +146,29 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 	}
 
 	switch msg.Type {
+	case "problem_statement_update":
+		var p struct {
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(msg.Payload, &p) != nil {
+			return
+		}
+		var project models.Project
+		if h.db.Where("id = ?", h.projectID).First(&project).Error != nil {
+			return
+		}
+		authorized := (project.PresenterID != nil && *project.PresenterID == client.userID) ||
+			(project.PresenterID == nil && project.CreatedBy == client.userID)
+		if !authorized {
+			return
+		}
+		h.db.Model(&models.Project{}).
+			Where("id = ?", h.projectID).
+			Update("problem_statement", p.Text)
+		if data, err := buildMessage("problem_statement_update", map[string]any{"text": p.Text}); err == nil {
+			h.broadcast <- data
+		}
+
 	case "note_create":
 		var p struct {
 			Content string  `json:"content"`

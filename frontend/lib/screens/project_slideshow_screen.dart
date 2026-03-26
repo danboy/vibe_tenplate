@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:ui' show PointMode;
@@ -36,8 +37,10 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
   Project? _project;
   Group? _group;
 
-  // 0 = brainstorm, 1 = group
+  // 0 = problem, 1 = brainstorm, 2 = group, 3 = vote, 4 = prioritise
   int _slide = 0;
+  String _problemStatement = '';
+  Timer? _psDebounce;
 
   // Viewport state
   Offset _offset = Offset.zero;
@@ -171,7 +174,8 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
             _votes.putIfAbsent(vMap['note_id'] as String, () => {})[
                 vMap['user_id'] as String] = vMap['count'] as int;
           }
-          if (_notes.isNotEmpty && (_slide == 0 || _slide == 1 || _slide == 2)) {
+          _problemStatement = (p['problem_statement'] as String?) ?? '';
+          if (_notes.isNotEmpty && (_slide == 1 || _slide == 2 || _slide == 3)) {
             _centerIfNeeded();
           }
 
@@ -226,6 +230,9 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
 
         case 'slide_change':
           _slide = payload['slide'] as int;
+
+        case 'problem_statement_update':
+          _problemStatement = (payload['text'] as String?) ?? '';
 
         case 'presenter_change':
           if (_project != null) {
@@ -336,7 +343,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
     if (!_isPresenter) return;
     setState(() => _slide = i);
     _send('slide_change', {'slide': i});
-    if (i == 0 || i == 1 || i == 2) _centerIfNeeded();
+    if (i == 1 || i == 2 || i == 3) _centerIfNeeded();
   }
 
   Future<void> _showSetPresenterDialog() async {
@@ -578,17 +585,19 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
 
   @override
   void dispose() {
+    _psDebounce?.cancel();
     _channel?.sink.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isGroupingMode = _slide == 1;
+    final isProblemMode = _slide == 0;
+    final isGroupingMode = _slide == 2;
     final enableVote = _project?.enableVote ?? false;
     final enablePrioritise = _project?.enablePrioritise ?? false;
-    final isVotingMode = _slide == 2 && enableVote;
-    final isCostValueMode = _slide == 3 && enablePrioritise;
+    final isVotingMode = _slide == 3 && enableVote;
+    final isCostValueMode = _slide == 4 && enablePrioritise;
     final isPresenter = _isPresenter;
     final canAssign = _canAssignPresenter;
     final currentUserId = context.read<AuthProvider>().user?.id ?? '';
@@ -599,8 +608,9 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
     final enabledSlides = [
       0,
       1,
-      if (enableVote) 2,
-      if (enablePrioritise) 3,
+      2,
+      if (enableVote) 3,
+      if (enablePrioritise) 4,
     ];
 
     return Scaffold(
@@ -650,7 +660,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
           ),
         ],
       ),
-      floatingActionButton: _slide != 0
+      floatingActionButton: _slide != 1
           ? null
           : FloatingActionButton.extended(
               onPressed: _showAddNoteDialog,
@@ -666,7 +676,20 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
             onSlideChanged: _changeSlide,
           ),
           Expanded(
-            child: isCostValueMode
+            child: isProblemMode
+                ? _ProblemStatementSlide(
+                    text: _problemStatement,
+                    isPresenter: isPresenter,
+                    onChanged: (text) {
+                      setState(() => _problemStatement = text);
+                      _psDebounce?.cancel();
+                      _psDebounce = Timer(
+                        const Duration(milliseconds: 300),
+                        () => _send('problem_statement_update', {'text': text}),
+                      );
+                    },
+                  )
+                : isCostValueMode
                 ? _CostValueMatrix(
                     notes: _notes,
                     positions: _matrixPositions,
@@ -745,8 +768,8 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
 
 // ─── Slide tab bar ────────────────────────────────────────────────────────────
 
-const _slideLabels = ['Brainstorm', 'Group', 'Vote', 'Prioritise'];
-const _slideIcons = [Icons.sticky_note_2_outlined, Icons.hub_outlined, Icons.how_to_vote_outlined, Icons.grid_view_outlined];
+const _slideLabels = ['Problem', 'Brainstorm', 'Group', 'Vote', 'Prioritise'];
+const _slideIcons = [Icons.lightbulb_outline, Icons.sticky_note_2_outlined, Icons.hub_outlined, Icons.how_to_vote_outlined, Icons.grid_view_outlined];
 
 class _SlideTabBar extends StatelessWidget {
   final int currentSlide;
@@ -1676,6 +1699,255 @@ class _GroupDragAreaState extends State<_GroupDragArea> {
           _dy = 0;
         },
         child: SizedBox(width: widget.width, height: widget.height),
+      ),
+    );
+  }
+}
+
+// ─── Problem statement slide ───────────────────────────────────────────────────
+
+class _ProblemToolbar extends StatelessWidget {
+  final TextEditingController ctrl;
+  final void Function(String) onChanged;
+
+  const _ProblemToolbar({required this.ctrl, required this.onChanged});
+
+  void _wrapSelection(String marker) {
+    final sel = ctrl.selection;
+    if (!sel.isValid) return;
+    final text = ctrl.text;
+    final selected = sel.textInside(text);
+    final replacement = '$marker$selected$marker';
+    final newText = text.replaceRange(sel.start, sel.end, replacement);
+    final newOffset = sel.isCollapsed
+        ? sel.start + marker.length
+        : sel.end + marker.length * 2;
+    ctrl.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newOffset),
+    );
+    onChanged(newText);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _ToolbarButton(
+          label: 'B',
+          bold: true,
+          tooltip: 'Bold',
+          onPressed: () => _wrapSelection('**'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ToolbarButton extends StatelessWidget {
+  final String label;
+  final bool bold;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  const _ToolbarButton({
+    required this.label,
+    required this.tooltip,
+    required this.onPressed,
+    this.bold = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: const Color(0xFFE0E0E0)),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: bold ? FontWeight.w800 : FontWeight.normal,
+              color: Colors.black87,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProblemStatementSlide extends StatefulWidget {
+  final String text;
+  final bool isPresenter;
+  final void Function(String) onChanged;
+
+  const _ProblemStatementSlide({
+    required this.text,
+    required this.isPresenter,
+    required this.onChanged,
+  });
+
+  @override
+  State<_ProblemStatementSlide> createState() => _ProblemStatementSlideState();
+}
+
+class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.text);
+  }
+
+  @override
+  void didUpdateWidget(_ProblemStatementSlide old) {
+    super.didUpdateWidget(old);
+    // Sync whenever the incoming text differs from the controller.
+    // Echo-back from the server is a no-op: by the time it arrives the
+    // presenter has already updated _ctrl, so the texts match.
+    if (widget.text != _ctrl.text) {
+      _ctrl.value = _ctrl.value.copyWith(text: widget.text);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFF5F5F5),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.lightbulb_outline,
+                        size: 20, color: Color(0xFF4A90E2)),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Problem Statement',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    if (!widget.isPresenter) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'Read only',
+                          style: TextStyle(
+                              fontSize: 11, color: Colors.grey[500]),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (widget.isPresenter) ...[
+                  _ProblemToolbar(ctrl: _ctrl, onChanged: widget.onChanged),
+                  const SizedBox(height: 8),
+                ],
+                Expanded(
+                  child: widget.isPresenter
+                      ? TextField(
+                          controller: _ctrl,
+                          maxLines: null,
+                          expands: true,
+                          textAlignVertical: TextAlignVertical.top,
+                          style: const TextStyle(
+                              fontSize: 36, height: 1.6, color: Colors.black87),
+                          decoration: InputDecoration(
+                            hintText:
+                                'Describe the problem you\'re trying to solve…',
+                            hintStyle: TextStyle(
+                                color: Colors.grey[400], fontSize: 36),
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide:
+                                  const BorderSide(color: Color(0xFFE0E0E0)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide:
+                                  const BorderSide(color: Color(0xFFE0E0E0)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide:
+                                  const BorderSide(color: Color(0xFF4A90E2)),
+                            ),
+                            contentPadding: const EdgeInsets.all(20),
+                          ),
+                          onChanged: widget.onChanged,
+                        )
+                      : Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFE0E0E0)),
+                          ),
+                          child: widget.text.isEmpty
+                              ? Text(
+                                  'No problem statement defined yet.',
+                                  style: TextStyle(
+                                      fontSize: 36,
+                                      color: Colors.grey[400],
+                                      fontStyle: FontStyle.italic),
+                                )
+                              : MarkdownBody(
+                                  data: widget.text,
+                                  styleSheet: MarkdownStyleSheet(
+                                    p: const TextStyle(
+                                        fontSize: 36,
+                                        height: 1.6,
+                                        color: Colors.black87),
+                                    strong: const TextStyle(
+                                        fontSize: 36,
+                                        height: 1.6,
+                                        color: Colors.black87,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
