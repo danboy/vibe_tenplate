@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/group.dart';
@@ -1706,39 +1707,212 @@ class _GroupDragAreaState extends State<_GroupDragArea> {
 
 // ─── Problem statement slide ───────────────────────────────────────────────────
 
-class _ProblemToolbar extends StatelessWidget {
+// Renders problem statement text with bold/italic/underline/strikethrough.
+// Shares the same regex as _ProblemTextController for consistency.
+class _ProblemRichText extends StatelessWidget {
+  final String text;
+  const _ProblemRichText({required this.text});
+
+  static const _base = TextStyle(fontSize: 36, height: 1.6, color: Colors.black87);
+
+  List<InlineSpan> _parse(String text) {
+    final spans = <InlineSpan>[];
+    int last = 0;
+    for (final match in _ProblemTextController._styleRegex.allMatches(text)) {
+      if (match.start > last) {
+        spans.add(TextSpan(text: text.substring(last, match.start), style: _base));
+      }
+      if (match.group(1) != null) {
+        spans.add(TextSpan(text: match.group(1), style: _base.copyWith(fontWeight: FontWeight.bold)));
+      } else if (match.group(2) != null) {
+        spans.add(TextSpan(text: match.group(2), style: _base.copyWith(decoration: TextDecoration.lineThrough)));
+      } else if (match.group(3) != null) {
+        spans.add(TextSpan(text: match.group(3), style: _base.copyWith(decoration: TextDecoration.underline)));
+      } else if (match.group(4) != null) {
+        spans.add(TextSpan(text: match.group(4), style: _base.copyWith(fontStyle: FontStyle.italic)));
+      }
+      last = match.end;
+    }
+    if (last < text.length) {
+      spans.add(TextSpan(text: text.substring(last), style: _base));
+    }
+    return spans;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RichText(text: TextSpan(children: _parse(text)));
+  }
+}
+
+class _ProblemTextController extends TextEditingController {
+  _ProblemTextController({super.text});
+
+  // Group 1=bold(**), 2=strikethrough(~~), 3=underline(__), 4=italic(*).
+  // Bold before italic so **text** is never mis-parsed as italic.
+  static final _styleRegex = RegExp(
+    r'\*\*([^*]+)\*\*|~~(.+?)~~|__(.+?)__|\*([^*]+)\*',
+    dotAll: true,
+  );
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    final text = this.text;
+    final spans = <InlineSpan>[];
+    int last = 0;
+
+    final hidden = style?.copyWith(fontSize: 0.001, color: Colors.transparent) ??
+        const TextStyle(fontSize: 0.001, color: Colors.transparent);
+
+    for (final match in _styleRegex.allMatches(text)) {
+      if (match.start > last) {
+        spans.add(TextSpan(text: text.substring(last, match.start), style: style));
+      }
+
+      if (match.group(1) != null) {
+        // Bold
+        spans.add(TextSpan(text: '**', style: hidden));
+        spans.add(TextSpan(text: match.group(1), style: style?.copyWith(fontWeight: FontWeight.bold)));
+        spans.add(TextSpan(text: '**', style: hidden));
+      } else if (match.group(2) != null) {
+        // Strikethrough
+        spans.add(TextSpan(text: '~~', style: hidden));
+        spans.add(TextSpan(text: match.group(2), style: style?.copyWith(decoration: TextDecoration.lineThrough)));
+        spans.add(TextSpan(text: '~~', style: hidden));
+      } else if (match.group(3) != null) {
+        // Underline
+        spans.add(TextSpan(text: '__', style: hidden));
+        spans.add(TextSpan(text: match.group(3), style: style?.copyWith(decoration: TextDecoration.underline)));
+        spans.add(TextSpan(text: '__', style: hidden));
+      } else if (match.group(4) != null) {
+        // Italic
+        spans.add(TextSpan(text: '*', style: hidden));
+        spans.add(TextSpan(text: match.group(4), style: style?.copyWith(fontStyle: FontStyle.italic)));
+        spans.add(TextSpan(text: '*', style: hidden));
+      }
+
+      last = match.end;
+    }
+    if (last < text.length) {
+      spans.add(TextSpan(text: text.substring(last), style: style));
+    }
+    return TextSpan(children: spans, style: style);
+  }
+}
+
+class _ProblemToolbar extends StatefulWidget {
   final TextEditingController ctrl;
   final void Function(String) onChanged;
 
   const _ProblemToolbar({required this.ctrl, required this.onChanged});
 
+  @override
+  State<_ProblemToolbar> createState() => _ProblemToolbarState();
+}
+
+class _ProblemToolbarState extends State<_ProblemToolbar> {
+  bool _showEmoji = false;
+
   void _wrapSelection(String marker) {
-    final sel = ctrl.selection;
+    final sel = widget.ctrl.selection;
     if (!sel.isValid) return;
-    final text = ctrl.text;
+    final text = widget.ctrl.text;
     final selected = sel.textInside(text);
     final replacement = '$marker$selected$marker';
     final newText = text.replaceRange(sel.start, sel.end, replacement);
     final newOffset = sel.isCollapsed
         ? sel.start + marker.length
         : sel.end + marker.length * 2;
-    ctrl.value = TextEditingValue(
+    widget.ctrl.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(offset: newOffset),
     );
-    onChanged(newText);
+    widget.onChanged(newText);
+  }
+
+  void _insertEmoji(String emoji) {
+    final ctrl = widget.ctrl;
+    final sel = ctrl.selection;
+    final text = ctrl.text;
+    final pos = sel.isValid ? sel.baseOffset : text.length;
+    final end = sel.isValid ? sel.extentOffset : pos;
+    final newText = text.replaceRange(pos, end, emoji);
+    ctrl.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: pos + emoji.length),
+    );
+    widget.onChanged(newText);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _ToolbarButton(
-          label: 'B',
-          bold: true,
-          tooltip: 'Bold',
-          onPressed: () => _wrapSelection('**'),
+        Row(
+          children: [
+            _ToolbarButton(
+              label: 'B',
+              bold: true,
+              tooltip: 'Bold',
+              onPressed: () => _wrapSelection('**'),
+            ),
+            const SizedBox(width: 6),
+            _ToolbarButton(
+              label: 'U',
+              underline: true,
+              tooltip: 'Underline',
+              onPressed: () => _wrapSelection('__'),
+            ),
+            const SizedBox(width: 6),
+            _ToolbarButton(
+              label: 'I',
+              italic: true,
+              tooltip: 'Italic',
+              onPressed: () => _wrapSelection('*'),
+            ),
+            const SizedBox(width: 6),
+            _ToolbarButton(
+              label: 'S',
+              strikethrough: true,
+              tooltip: 'Strikethrough',
+              onPressed: () => _wrapSelection('~~'),
+            ),
+            const SizedBox(width: 6),
+            _ToolbarButton(
+              label: '😊',
+              tooltip: 'Emoji',
+              active: _showEmoji,
+              onPressed: () => setState(() => _showEmoji = !_showEmoji),
+            ),
+          ],
         ),
+        if (_showEmoji) ...[
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 280,
+            child: EmojiPicker(
+              onEmojiSelected: (_, emoji) => _insertEmoji(emoji.emoji),
+              config: Config(
+                height: 280,
+                checkPlatformCompatibility: true,
+                emojiViewConfig: EmojiViewConfig(
+                  backgroundColor: Colors.white,
+                  columns: 10,
+                ),
+                categoryViewConfig: const CategoryViewConfig(
+                  backgroundColor: Colors.white,
+                  indicatorColor: Color(0xFF4A90E2),
+                  iconColorSelected: Color(0xFF4A90E2),
+                ),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1747,6 +1921,10 @@ class _ProblemToolbar extends StatelessWidget {
 class _ToolbarButton extends StatelessWidget {
   final String label;
   final bool bold;
+  final bool italic;
+  final bool underline;
+  final bool strikethrough;
+  final bool active;
   final String tooltip;
   final VoidCallback onPressed;
 
@@ -1755,6 +1933,10 @@ class _ToolbarButton extends StatelessWidget {
     required this.tooltip,
     required this.onPressed,
     this.bold = false,
+    this.italic = false,
+    this.underline = false,
+    this.strikethrough = false,
+    this.active = false,
   });
 
   @override
@@ -1769,15 +1951,24 @@ class _ToolbarButton extends StatelessWidget {
           height: 32,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: active ? const Color(0xFFE8F0FB) : Colors.white,
             borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: const Color(0xFFE0E0E0)),
+            border: Border.all(
+                color: active
+                    ? const Color(0xFF4A90E2)
+                    : const Color(0xFFE0E0E0)),
           ),
           child: Text(
             label,
             style: TextStyle(
               fontSize: 14,
               fontWeight: bold ? FontWeight.w800 : FontWeight.normal,
+              fontStyle: italic ? FontStyle.italic : FontStyle.normal,
+              decoration: underline
+                  ? TextDecoration.underline
+                  : strikethrough
+                      ? TextDecoration.lineThrough
+                      : TextDecoration.none,
               color: Colors.black87,
             ),
           ),
@@ -1803,12 +1994,12 @@ class _ProblemStatementSlide extends StatefulWidget {
 }
 
 class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
-  late final TextEditingController _ctrl;
+  late final _ProblemTextController _ctrl;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = TextEditingController(text: widget.text);
+    _ctrl = _ProblemTextController(text: widget.text);
   }
 
   @override
@@ -1928,20 +2119,7 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
                                       color: Colors.grey[400],
                                       fontStyle: FontStyle.italic),
                                 )
-                              : MarkdownBody(
-                                  data: widget.text,
-                                  styleSheet: MarkdownStyleSheet(
-                                    p: const TextStyle(
-                                        fontSize: 36,
-                                        height: 1.6,
-                                        color: Colors.black87),
-                                    strong: const TextStyle(
-                                        fontSize: 36,
-                                        height: 1.6,
-                                        color: Colors.black87,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                ),
+                              : _ProblemRichText(text: widget.text),
                         ),
                 ),
               ],
