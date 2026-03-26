@@ -1683,7 +1683,7 @@ class _GroupDragAreaState extends State<_GroupDragArea> {
 
 // ─── Cost-value matrix ─────────────────────────────────────────────────────────
 
-class _CostValueMatrix extends StatelessWidget {
+class _CostValueMatrix extends StatefulWidget {
   final List<StickyNote> notes;
   final Map<String, Offset> positions;
   final Map<String, String> lockedBy;
@@ -1702,15 +1702,33 @@ class _CostValueMatrix extends StatelessWidget {
     required this.onDragEnd,
   });
 
-  Offset _posFor(String id) => positions[id] ?? const Offset(0.5, 0.5);
+  @override
+  State<_CostValueMatrix> createState() => _CostValueMatrixState();
+}
 
-  // Colour used for the circle on the matrix and the dot in the list.
+class _CostValueMatrixState extends State<_CostValueMatrix> {
+  final _stackKey = GlobalKey();
+  double _matrixLeft = 0, _matrixTop = 0, _matrixW = 1, _matrixH = 1;
+  final Map<String, Offset> _grabOffset = {};
+
+  Offset _posFor(String id) => widget.positions[id] ?? const Offset(0.5, 0.5);
+
   Color _dotColor(StickyNote note) =>
       note.isGroup ? _groupColors(note.id).$2 : _hexColor(note.color);
 
+  Offset _globalToNormalized(Offset globalPos) {
+    final box = _stackKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return const Offset(0.5, 0.5);
+    final local = box.globalToLocal(globalPos);
+    return Offset(
+      ((local.dx - _matrixLeft) / _matrixW).clamp(0.0, 1.0),
+      (1.0 - (local.dy - _matrixTop) / _matrixH).clamp(0.0, 1.0),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final items = notes.where((n) => n.isGroup || n.parentId == null).toList();
+    final items = widget.notes.where((n) => n.isGroup || n.parentId == null).toList();
 
     if (items.isEmpty) {
       return Center(
@@ -1761,7 +1779,7 @@ class _CostValueMatrix extends StatelessWidget {
                   children: items.map((note) {
                     final color = _dotColor(note);
                     final childCount = note.isGroup
-                        ? notes.where((n) => n.parentId == note.id).length
+                        ? widget.notes.where((n) => n.parentId == note.id).length
                         : 0;
                     final label = note.content.isEmpty
                         ? (note.isGroup ? 'Untitled group' : '')
@@ -1829,12 +1847,17 @@ class _CostValueMatrix extends StatelessWidget {
             final matrixW = matrixRight - matrixLeft;
             final matrixH = matrixBottom - matrixTop;
 
+            _matrixLeft = matrixLeft;
+            _matrixTop = matrixTop;
+            _matrixW = matrixW;
+            _matrixH = matrixH;
+
             Offset toScreen(Offset norm) => Offset(
                   matrixLeft + norm.dx * matrixW,
                   matrixTop + (1.0 - norm.dy) * matrixH,
                 );
 
-            return Stack(children: [
+            return Stack(key: _stackKey, children: [
               // Light grey fill behind everything
               Positioned.fill(
                   child: Container(color: const Color(0xFFF5F5F5))),
@@ -1940,8 +1963,8 @@ class _CostValueMatrix extends StatelessWidget {
                     ThemeData.estimateBrightnessForColor(color) ==
                         Brightness.dark;
                 final iconColor = isDark ? Colors.white70 : Colors.white;
-                final lockedByOther = lockedBy.containsKey(note.id) &&
-                    lockedBy[note.id] != currentUserId;
+                final lockedByOther = widget.lockedBy.containsKey(note.id) &&
+                    widget.lockedBy[note.id] != widget.currentUserId;
 
                 return Positioned(
                   left: pos.dx - r,
@@ -1951,23 +1974,34 @@ class _CostValueMatrix extends StatelessWidget {
                     child: GestureDetector(
                       onPanStart: lockedByOther
                           ? null
-                          : (_) => onDragStart(note.id),
+                          : (d) {
+                              final ptrNorm =
+                                  _globalToNormalized(d.globalPosition);
+                              _grabOffset[note.id] =
+                                  ptrNorm - _posFor(note.id);
+                              widget.onDragStart(note.id);
+                            },
                       onPanUpdate: lockedByOther
                           ? null
                           : (d) {
-                              final cur = _posFor(note.id);
-                              onPositionChanged(
-                                  note.id,
-                                  Offset(
-                                    (cur.dx + d.delta.dx / matrixW)
-                                        .clamp(0.0, 1.0),
-                                    (cur.dy - d.delta.dy / matrixH)
-                                        .clamp(0.0, 1.0),
-                                  ));
+                              final ptrNorm =
+                                  _globalToNormalized(d.globalPosition);
+                              final grab =
+                                  _grabOffset[note.id] ?? Offset.zero;
+                              widget.onPositionChanged(
+                                note.id,
+                                Offset(
+                                  (ptrNorm.dx - grab.dx).clamp(0.0, 1.0),
+                                  (ptrNorm.dy - grab.dy).clamp(0.0, 1.0),
+                                ),
+                              );
                             },
                       onPanEnd: lockedByOther
                           ? null
-                          : (_) => onDragEnd(note.id),
+                          : (_) {
+                              _grabOffset.remove(note.id);
+                              widget.onDragEnd(note.id);
+                            },
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
