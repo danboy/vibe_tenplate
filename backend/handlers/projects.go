@@ -50,6 +50,11 @@ func (h *ProjectHandler) loadGroupAsMember(c *gin.Context) (*models.Group, bool)
 	return nil, false
 }
 
+type projectWithUsers struct {
+	models.Project
+	ActiveUsers int `json:"active_users"`
+}
+
 func (h *ProjectHandler) ListProjects(c *gin.Context) {
 	group, ok := h.loadGroupAsMember(c)
 	if !ok {
@@ -62,7 +67,11 @@ func (h *ProjectHandler) ListProjects(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, projects)
+	resp := make([]projectWithUsers, len(projects))
+	for i, p := range projects {
+		resp[i] = projectWithUsers{Project: p, ActiveUsers: ws.GetClientCount(p.ID)}
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *ProjectHandler) GetProject(c *gin.Context) {

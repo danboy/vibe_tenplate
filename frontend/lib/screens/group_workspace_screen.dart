@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -17,20 +19,42 @@ class GroupWorkspaceScreen extends StatefulWidget {
 
 class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
   late Future<(Group, List<Project>)> _future;
+  List<Project>? _projects; // kept in sync for silent refreshes
   String _search = '';
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted) _silentRefreshProjects();
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   void _load() {
     final api = context.read<AuthProvider>().api;
+    _projects = null;
     _future = Future.wait([
       api.getGroup(widget.groupSlug),
       api.listProjects(widget.groupSlug),
     ]).then((results) => (results[0] as Group, results[1] as List<Project>));
+  }
+
+  // Refresh only the projects list so active user counts update without
+  // showing a loading spinner or re-fetching the group.
+  void _silentRefreshProjects() {
+    final api = context.read<AuthProvider>().api;
+    api.listProjects(widget.groupSlug).then((projects) {
+      if (!mounted) return;
+      setState(() => _projects = projects);
+    }).catchError((_) {});
   }
 
   void _refresh() => setState(() => _load());
@@ -375,6 +399,9 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     if (snap.connectionState == ConnectionState.waiting) {
       return const Center(child: CircularProgressIndicator());
     }
+    // Use the silently-refreshed list if available, so active user counts
+    // update without reloading the whole screen.
+    projects = _projects ?? projects;
     if (snap.hasError) {
       return Center(
         child: Column(
@@ -533,6 +560,44 @@ class _ProjectCard extends StatelessWidget {
                         Text(_formatDate(project.createdAt),
                             style: const TextStyle(
                                 color: Colors.grey, fontSize: 12)),
+                        if (true) ...[
+                          const SizedBox(width: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: project.activeUsers > 0
+                                  ? Colors.green.shade100
+                                  : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: project.activeUsers > 0
+                                        ? Colors.green
+                                        : Colors.grey,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${project.activeUsers} active',
+                                  style: TextStyle(
+                                      color: project.activeUsers > 0
+                                          ? Colors.green
+                                          : Colors.grey,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],

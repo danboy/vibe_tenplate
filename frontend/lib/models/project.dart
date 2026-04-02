@@ -13,6 +13,7 @@ class Project {
   final bool enableVote;
   final bool enablePrioritise;
   final String problemStatement;
+  final int activeUsers;
 
   const Project({
     required this.id,
@@ -29,6 +30,7 @@ class Project {
     this.enableVote = true,
     this.enablePrioritise = true,
     this.problemStatement = '',
+    this.activeUsers = 0,
   });
 
   factory Project.fromJson(Map<String, dynamic> json) => Project(
@@ -48,6 +50,7 @@ class Project {
         enableVote: json['enable_vote'] as bool? ?? true,
         enablePrioritise: json['enable_prioritise'] as bool? ?? true,
         problemStatement: json['problem_statement'] as String? ?? '',
+        activeUsers: json['active_users'] as int? ?? 0,
       );
 
   Project copyWith({String? presenterId, String? presenterUsername, bool clearPresenter = false}) =>

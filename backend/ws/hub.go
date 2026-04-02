@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"sync"
+	"sync/atomic"
 
 	"tenplate/models"
 
@@ -37,6 +38,7 @@ type Hub struct {
 	mu           sync.Mutex // protects currentSlide
 	matrixLocks  map[string]string // noteID → userID currently dragging
 	matrixMu     sync.Mutex        // protects matrixLocks
+	clientCount  atomic.Int32
 }
 
 func newHub(projectID string, db *gorm.DB) *Hub {
@@ -58,11 +60,13 @@ func (h *Hub) run() {
 		select {
 		case client := <-h.register:
 			h.clients[client] = true
+			h.clientCount.Add(1)
 			h.sendInit(client)
 
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
+				h.clientCount.Add(-1)
 				close(client.send)
 				// Release any matrix locks held by this client.
 				h.matrixMu.Lock()
@@ -520,6 +524,18 @@ func GetHub(projectID string, db *gorm.DB) *Hub {
 // Register enqueues a client to be added to the hub.
 func (h *Hub) Register(client *Client) {
 	h.register <- client
+}
+
+// GetClientCount returns the number of active WebSocket connections for a project.
+// Returns 0 if no hub exists for the project.
+func GetClientCount(projectID string) int {
+	manager.mu.Lock()
+	h, ok := manager.hubs[projectID]
+	manager.mu.Unlock()
+	if !ok {
+		return 0
+	}
+	return int(h.clientCount.Load())
 }
 
 // NotifyPresenter broadcasts a presenter_change message to an existing hub (no-op if none).
