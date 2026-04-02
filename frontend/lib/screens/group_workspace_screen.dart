@@ -603,17 +603,33 @@ class _ProjectCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (onEdit != null)
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined),
-                  onPressed: onEdit,
-                  tooltip: 'Edit project',
-                ),
-              if (canDelete)
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  onPressed: onDelete,
-                  tooltip: 'Delete project',
+              if (onEdit != null || canDelete)
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (value) {
+                    if (value == 'edit') onEdit?.call();
+                    if (value == 'delete') onDelete();
+                  },
+                  itemBuilder: (_) => [
+                    if (onEdit != null)
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Edit'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    if (canDelete)
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: ListTile(
+                          leading: Icon(Icons.delete_outline, color: Colors.red),
+                          title: Text('Delete', style: TextStyle(color: Colors.red)),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                  ],
                 ),
             ],
           ),
