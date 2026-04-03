@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/group.dart';
 import '../models/project.dart';
@@ -42,9 +43,11 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
   int _slide = 0;
   String _problemStatement = '';
   Timer? _psDebounce;
-  bool _showInterstitial = false;
   bool _wsInitialized = false;
   final Set<int> _dismissedInterstitials = {};
+
+  bool get _showInterstitial =>
+      _wsInitialized && !_dismissedInterstitials.contains(_slide);
 
   // Viewport state
   Offset _offset = Offset.zero;
@@ -103,10 +106,29 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
     }
   }
 
+  static const _prefsKey = 'dismissed_interstitials';
+
   @override
   void initState() {
     super.initState();
+    _loadDismissed();
     _loadAndConnect();
+  }
+
+  Future<void> _loadDismissed() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList(_prefsKey) ?? [];
+    if (mounted) {
+      setState(() => _dismissedInterstitials.addAll(saved.map(int.parse)));
+    }
+  }
+
+  Future<void> _saveDismissed() async {
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setStringList(
+      _prefsKey,
+      _dismissedInterstitials.map((i) => '$i').toList(),
+    );
   }
 
   Future<void> _loadAndConnect() async {
@@ -237,9 +259,6 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
 
         case 'slide_change':
           _slide = payload['slide'] as int;
-          if (_wsInitialized && !_dismissedInterstitials.contains(_slide)) {
-            _showInterstitial = true;
-          }
 
         case 'problem_statement_update':
           _problemStatement = (payload['text'] as String?) ?? '';
@@ -351,10 +370,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
 
   void _changeSlide(int i) {
     if (!_isPresenter) return;
-    setState(() {
-      _slide = i;
-      _showInterstitial = !_dismissedInterstitials.contains(i);
-    });
+    setState(() => _slide = i);
     _send('slide_change', {'slide': i});
     if (i == 1 || i == 2 || i == 3) _centerIfNeeded();
   }
@@ -659,10 +675,10 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
           IconButton(
             icon: const Icon(Icons.info_outline),
             tooltip: 'Activity info',
-            onPressed: () => setState(() {
-              _dismissedInterstitials.remove(_slide);
-              _showInterstitial = true;
-            }),
+            onPressed: () {
+              setState(() => _dismissedInterstitials.remove(_slide));
+              _saveDismissed();
+            },
           ),
           IconButton(
             icon: const Icon(Icons.center_focus_strong_outlined),
@@ -788,10 +804,10 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
                 if (_showInterstitial)
                   _SlideInterstitial(
                     slide: _slide,
-                    onDismiss: () => setState(() {
-                      _showInterstitial = false;
-                      _dismissedInterstitials.add(_slide);
-                    }),
+                    onDismiss: () {
+                      setState(() => _dismissedInterstitials.add(_slide));
+                      _saveDismissed();
+                    },
                   ),
               ],
             ),

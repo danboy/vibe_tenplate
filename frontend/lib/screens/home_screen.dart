@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/group.dart';
+import '../services/api_service.dart';
 import 'app_shell.dart';
 
 class MyGroupsScreen extends StatefulWidget {
@@ -44,7 +45,9 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
     final api = context.read<AuthProvider>().api;
     setState(() {
       _search = value;
-      if (value.isNotEmpty && _allGroupsFuture == null) {
+      if (value.isEmpty) {
+        _allGroupsFuture = null;
+      } else if (_allGroupsFuture == null) {
         _allGroupsFuture = api.listGroups();
       }
     });
@@ -57,10 +60,7 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
         await _joinWithCode(group, api);
       } else {
         await api.joinGroup(group.slug);
-        setState(() {
-          _load();
-          _allGroupsFuture = api.listGroups();
-        });
+        setState(_load);
       }
     } catch (e) {
       if (mounted) {
@@ -70,7 +70,7 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
     }
   }
 
-  Future<void> _joinWithCode(Group group, dynamic api) async {
+  Future<void> _joinWithCode(Group group, ApiService api) async {
     final codeCtrl = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
@@ -113,10 +113,7 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
     );
     if (confirmed != true || !mounted) return;
     await api.joinGroup(group.slug, code: codeCtrl.text.trim());
-    setState(() {
-      _load();
-      _allGroupsFuture = api.listGroups();
-    });
+    setState(_load);
   }
 
   Future<void> _showCreateDialog() async {
