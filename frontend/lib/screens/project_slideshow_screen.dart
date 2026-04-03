@@ -42,6 +42,9 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
   int _slide = 0;
   String _problemStatement = '';
   Timer? _psDebounce;
+  bool _showInterstitial = false;
+  bool _wsInitialized = false;
+  final Set<int> _dismissedInterstitials = {};
 
   // Viewport state
   Offset _offset = Offset.zero;
@@ -178,6 +181,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
                 vMap['user_id'] as String] = vMap['count'] as int;
           }
           _problemStatement = (p['problem_statement'] as String?) ?? '';
+          _wsInitialized = true;
           if (_notes.isNotEmpty && (_slide == 1 || _slide == 2 || _slide == 3)) {
             _centerIfNeeded();
           }
@@ -233,6 +237,9 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
 
         case 'slide_change':
           _slide = payload['slide'] as int;
+          if (_wsInitialized && !_dismissedInterstitials.contains(_slide)) {
+            _showInterstitial = true;
+          }
 
         case 'problem_statement_update':
           _problemStatement = (payload['text'] as String?) ?? '';
@@ -344,7 +351,10 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
 
   void _changeSlide(int i) {
     if (!_isPresenter) return;
-    setState(() => _slide = i);
+    setState(() {
+      _slide = i;
+      _showInterstitial = !_dismissedInterstitials.contains(i);
+    });
     _send('slide_change', {'slide': i});
     if (i == 1 || i == 2 || i == 3) _centerIfNeeded();
   }
@@ -647,6 +657,14 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
               onPressed: _showSetPresenterDialog,
             ),
           IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'Activity info',
+            onPressed: () => setState(() {
+              _dismissedInterstitials.remove(_slide);
+              _showInterstitial = true;
+            }),
+          ),
+          IconButton(
             icon: const Icon(Icons.center_focus_strong_outlined),
             tooltip: 'Center view',
             onPressed: _centerView,
@@ -664,7 +682,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
           ),
         ],
       ),
-      floatingActionButton: _slide != 1
+      floatingActionButton: _slide != 1 || _showInterstitial
           ? null
           : FloatingActionButton.extended(
               onPressed: _showAddNoteDialog,
@@ -680,91 +698,225 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
             onSlideChanged: _changeSlide,
           ),
           Expanded(
-            child: isProblemMode
-                ? _ProblemStatementSlide(
-                    text: _problemStatement,
-                    isPresenter: isPresenter,
-                    onChanged: (text) {
-                      setState(() => _problemStatement = text);
-                      _psDebounce?.cancel();
-                      _psDebounce = Timer(
-                        const Duration(milliseconds: 300),
-                        () => _send('problem_statement_update', {'text': text}),
-                      );
-                    },
-                  )
-                : isCostValueMode
-                ? _CostValueMatrix(
-                    notes: _notes,
-                    positions: _matrixPositions,
-                    lockedBy: _matrixLockedBy,
-                    currentUserId:
-                        context.read<AuthProvider>().user?.id ?? '',
-                    onPositionChanged: _onMatrixPositionChanged,
-                    onDragStart: _onMatrixDragStart,
-                    onDragEnd: _onMatrixDragEnd,
-                  )
-                : isVotingMode
-                    ? ClipRect(
-                        child: Listener(
-                          onPointerSignal: _onPointerSignal,
-                          child: GestureDetector(
-                            onScaleStart: _onScaleStart,
-                            onScaleUpdate: _onScaleUpdate,
-                            child: _VoteCanvas(
-                              notes: _notes,
-                              votes: _votes,
-                              currentUserId:
-                                  context.read<AuthProvider>().user?.id ?? '',
-                              starsLeft: 4 - _myVotesUsed(),
-                              offset: _offset,
-                              scale: _scale,
-                              onVoteDelta: (noteId, delta) {
-                                final userId =
-                                    context.read<AuthProvider>().user?.id ?? '';
-                                final current =
-                                    _votes[noteId]?[userId] ?? 0;
-                                final next = (current + delta).clamp(0, 4);
-                                if (next == current) return;
-                                _setVote(noteId, next);
-                              },
-                            ),
-                          ),
-                        ),
-                      )
-                    : ClipRect(
-                    child: Listener(
-                      onPointerSignal: _onPointerSignal,
-                      child: GestureDetector(
-                        onScaleStart: _onScaleStart,
-                        onScaleUpdate: _onScaleUpdate,
-                        child: _InfiniteCanvas(
-                          notes: _notes,
-                          offset: _offset,
-                          scale: _scale,
-                          isGroupingMode: isGroupingMode,
-                          groupDragOffsets: _groupDragOffsets,
-                          onNoteMove: _moveNote,
-                          onNoteDelete: _deleteNote,
-                          onNoteUpdate: _updateNote,
-                          onGroupNotes: _groupNotes,
-                          onUngroupNote: _ungroupNote,
-                          onFindOverlap: _findOverlap,
-                          onGroupDragUpdate: _onGroupDragUpdate,
-                          onGroupDragEnd: _onGroupDragEnd,
-                          onNoteDragStart: () =>
-                              setState(() => _isDraggingNote = true),
-                          onNoteDragEnd: () =>
-                              setState(() => _isDraggingNote = false),
-                          currentUserId: currentUserId,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: isProblemMode
+                      ? _ProblemStatementSlide(
+                          text: _problemStatement,
                           isPresenter: isPresenter,
-                          isOwner: canAssign,
-                        ),
-                      ),
-                    ),
+                          onChanged: (text) {
+                            setState(() => _problemStatement = text);
+                            _psDebounce?.cancel();
+                            _psDebounce = Timer(
+                              const Duration(milliseconds: 300),
+                              () => _send('problem_statement_update', {'text': text}),
+                            );
+                          },
+                        )
+                      : isCostValueMode
+                      ? _CostValueMatrix(
+                          notes: _notes,
+                          positions: _matrixPositions,
+                          lockedBy: _matrixLockedBy,
+                          currentUserId:
+                              context.read<AuthProvider>().user?.id ?? '',
+                          onPositionChanged: _onMatrixPositionChanged,
+                          onDragStart: _onMatrixDragStart,
+                          onDragEnd: _onMatrixDragEnd,
+                        )
+                      : isVotingMode
+                          ? ClipRect(
+                              child: Listener(
+                                onPointerSignal: _onPointerSignal,
+                                child: GestureDetector(
+                                  onScaleStart: _onScaleStart,
+                                  onScaleUpdate: _onScaleUpdate,
+                                  child: _VoteCanvas(
+                                    notes: _notes,
+                                    votes: _votes,
+                                    currentUserId:
+                                        context.read<AuthProvider>().user?.id ?? '',
+                                    starsLeft: 4 - _myVotesUsed(),
+                                    offset: _offset,
+                                    scale: _scale,
+                                    onVoteDelta: (noteId, delta) {
+                                      final userId =
+                                          context.read<AuthProvider>().user?.id ?? '';
+                                      final current =
+                                          _votes[noteId]?[userId] ?? 0;
+                                      final next = (current + delta).clamp(0, 4);
+                                      if (next == current) return;
+                                      _setVote(noteId, next);
+                                    },
+                                  ),
+                                ),
+                              ),
+                            )
+                          : ClipRect(
+                              child: Listener(
+                                onPointerSignal: _onPointerSignal,
+                                child: GestureDetector(
+                                  onScaleStart: _onScaleStart,
+                                  onScaleUpdate: _onScaleUpdate,
+                                  child: _InfiniteCanvas(
+                                    notes: _notes,
+                                    offset: _offset,
+                                    scale: _scale,
+                                    isGroupingMode: isGroupingMode,
+                                    groupDragOffsets: _groupDragOffsets,
+                                    onNoteMove: _moveNote,
+                                    onNoteDelete: _deleteNote,
+                                    onNoteUpdate: _updateNote,
+                                    onGroupNotes: _groupNotes,
+                                    onUngroupNote: _ungroupNote,
+                                    onFindOverlap: _findOverlap,
+                                    onGroupDragUpdate: _onGroupDragUpdate,
+                                    onGroupDragEnd: _onGroupDragEnd,
+                                    onNoteDragStart: () =>
+                                        setState(() => _isDraggingNote = true),
+                                    onNoteDragEnd: () =>
+                                        setState(() => _isDraggingNote = false),
+                                    currentUserId: currentUserId,
+                                    isPresenter: isPresenter,
+                                    isOwner: canAssign,
+                                  ),
+                                ),
+                              ),
+                            ),
+                ),
+                if (_showInterstitial)
+                  _SlideInterstitial(
+                    slide: _slide,
+                    onDismiss: () => setState(() {
+                      _showInterstitial = false;
+                      _dismissedInterstitials.add(_slide);
+                    }),
                   ),
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Slide interstitial ───────────────────────────────────────────────────────
+
+const _interstitials = [
+  (
+    icon: Icons.lightbulb_outline,
+    title: 'Problem Statement',
+    description:
+        'As a team, define the problem you\'re solving. Be specific — a well-framed problem leads to better solutions.',
+    action: 'Got it',
+  ),
+  (
+    icon: Icons.sticky_note_2_outlined,
+    title: 'Brainstorm',
+    description:
+        'Add as many ideas as you like using sticky notes. Quantity over quality — no idea is too small at this stage.',
+    action: 'Start brainstorming',
+  ),
+  (
+    icon: Icons.hub_outlined,
+    title: 'Group',
+    description:
+        'Drag similar ideas onto each other to cluster them into themes. Look for patterns across the notes.',
+    action: 'Start grouping',
+  ),
+  (
+    icon: Icons.how_to_vote_outlined,
+    title: 'Vote',
+    description:
+        'You have 4 stars to distribute. Place them on the ideas you think are most valuable to pursue.',
+    action: 'Start voting',
+  ),
+  (
+    icon: Icons.grid_view_outlined,
+    title: 'Prioritise',
+    description:
+        'Place each idea on the matrix based on its cost to implement vs the value it delivers to the team.',
+    action: 'Start prioritising',
+  ),
+];
+
+class _SlideInterstitial extends StatelessWidget {
+  final int slide;
+  final VoidCallback onDismiss;
+
+  const _SlideInterstitial({required this.slide, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final info = _interstitials[slide.clamp(0, _interstitials.length - 1)];
+
+    return Container(
+      color: Colors.black.withValues(alpha: 0.55),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Card(
+            margin: const EdgeInsets.all(32),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      info.icon,
+                      size: 32,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    info.title,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    info.description,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: onDismiss,
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: Text(info.action),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
