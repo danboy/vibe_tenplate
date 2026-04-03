@@ -209,6 +209,11 @@ class ApiService {
     required bool enableProblem,
     required bool enableVote,
     required bool enablePrioritise,
+    String interstitialProblem = '',
+    String interstitialBrainstorm = '',
+    String interstitialGroup = '',
+    String interstitialVote = '',
+    String interstitialPrioritise = '',
   }) async {
     final response = await _post(
       Uri.parse('$baseUrl/groups/$groupSlug/projects'),
@@ -219,6 +224,11 @@ class ApiService {
         'enable_problem': enableProblem,
         'enable_vote': enableVote,
         'enable_prioritise': enablePrioritise,
+        'interstitial_problem': interstitialProblem,
+        'interstitial_brainstorm': interstitialBrainstorm,
+        'interstitial_group': interstitialGroup,
+        'interstitial_vote': interstitialVote,
+        'interstitial_prioritise': interstitialPrioritise,
       }),
     );
     final data = await _parseMap(response);
@@ -234,6 +244,11 @@ class ApiService {
     required bool enableProblem,
     required bool enableVote,
     required bool enablePrioritise,
+    String interstitialProblem = '',
+    String interstitialBrainstorm = '',
+    String interstitialGroup = '',
+    String interstitialVote = '',
+    String interstitialPrioritise = '',
   }) async {
     final response = await _patch(
       Uri.parse('$baseUrl/groups/$groupSlug/projects/$projectSlug'),
@@ -244,6 +259,11 @@ class ApiService {
         'enable_problem': enableProblem,
         'enable_vote': enableVote,
         'enable_prioritise': enablePrioritise,
+        'interstitial_problem': interstitialProblem,
+        'interstitial_brainstorm': interstitialBrainstorm,
+        'interstitial_group': interstitialGroup,
+        'interstitial_vote': interstitialVote,
+        'interstitial_prioritise': interstitialPrioritise,
       }),
     );
     final data = await _parseMap(response);

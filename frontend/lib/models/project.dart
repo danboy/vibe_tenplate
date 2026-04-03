@@ -14,6 +14,11 @@ class Project {
   final bool enablePrioritise;
   final String problemStatement;
   final int activeUsers;
+  final String interstitialProblem;
+  final String interstitialBrainstorm;
+  final String interstitialGroup;
+  final String interstitialVote;
+  final String interstitialPrioritise;
 
   const Project({
     required this.id,
@@ -31,7 +36,26 @@ class Project {
     this.enablePrioritise = true,
     this.problemStatement = '',
     this.activeUsers = 0,
+    this.interstitialProblem = '',
+    this.interstitialBrainstorm = '',
+    this.interstitialGroup = '',
+    this.interstitialVote = '',
+    this.interstitialPrioritise = '',
   });
+
+  /// Returns the custom interstitial description for [slide], or null to use
+  /// the app default.
+  String? interstitialForSlide(int slide) {
+    final value = switch (slide) {
+      0 => interstitialProblem,
+      1 => interstitialBrainstorm,
+      2 => interstitialGroup,
+      3 => interstitialVote,
+      4 => interstitialPrioritise,
+      _ => '',
+    };
+    return value.isEmpty ? null : value;
+  }
 
   factory Project.fromJson(Map<String, dynamic> json) => Project(
         id: json['id'] as String,
@@ -51,6 +75,11 @@ class Project {
         enablePrioritise: json['enable_prioritise'] as bool? ?? true,
         problemStatement: json['problem_statement'] as String? ?? '',
         activeUsers: json['active_users'] as int? ?? 0,
+        interstitialProblem: json['interstitial_problem'] as String? ?? '',
+        interstitialBrainstorm: json['interstitial_brainstorm'] as String? ?? '',
+        interstitialGroup: json['interstitial_group'] as String? ?? '',
+        interstitialVote: json['interstitial_vote'] as String? ?? '',
+        interstitialPrioritise: json['interstitial_prioritise'] as String? ?? '',
       );
 
   Project copyWith({String? presenterId, String? presenterUsername, bool clearPresenter = false}) =>

@@ -26,6 +26,12 @@ type CreateProjectRequest struct {
 	EnableProblem    bool   `json:"enable_problem"`
 	EnableVote       bool   `json:"enable_vote"`
 	EnablePrioritise bool   `json:"enable_prioritise"`
+
+	InterstitialProblem    string `json:"interstitial_problem"`
+	InterstitialBrainstorm string `json:"interstitial_brainstorm"`
+	InterstitialGroup      string `json:"interstitial_group"`
+	InterstitialVote       string `json:"interstitial_vote"`
+	InterstitialPrioritise string `json:"interstitial_prioritise"`
 }
 
 // loadGroupAsMember fetches the group by slug with members preloaded and
@@ -114,15 +120,20 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	})
 
 	project := models.Project{
-		Name:             req.Name,
-		Slug:             slug,
-		Description:      req.Description,
-		ProblemStatement: req.ProblemStatement,
-		GroupID:          group.ID,
-		CreatedBy:        userID,
-		EnableProblem:    req.EnableProblem,
-		EnableVote:       req.EnableVote,
-		EnablePrioritise: req.EnablePrioritise,
+		Name:                   req.Name,
+		Slug:                   slug,
+		Description:            req.Description,
+		ProblemStatement:       req.ProblemStatement,
+		GroupID:                group.ID,
+		CreatedBy:              userID,
+		EnableProblem:          req.EnableProblem,
+		EnableVote:             req.EnableVote,
+		EnablePrioritise:       req.EnablePrioritise,
+		InterstitialProblem:    req.InterstitialProblem,
+		InterstitialBrainstorm: req.InterstitialBrainstorm,
+		InterstitialGroup:      req.InterstitialGroup,
+		InterstitialVote:       req.InterstitialVote,
+		InterstitialPrioritise: req.InterstitialPrioritise,
 	}
 
 	if err := h.db.Create(&project).Error; err != nil {
@@ -132,9 +143,14 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	// UpdateColumns with a map always sets the value even when false,
 	// because GORM's zero-value skip only applies to struct-based updates.
 	h.db.Model(&project).UpdateColumns(map[string]any{
-		"enable_problem":    req.EnableProblem,
-		"enable_vote":       req.EnableVote,
-		"enable_prioritise": req.EnablePrioritise,
+		"enable_problem":          req.EnableProblem,
+		"enable_vote":             req.EnableVote,
+		"enable_prioritise":       req.EnablePrioritise,
+		"interstitial_problem":    req.InterstitialProblem,
+		"interstitial_brainstorm": req.InterstitialBrainstorm,
+		"interstitial_group":      req.InterstitialGroup,
+		"interstitial_vote":       req.InterstitialVote,
+		"interstitial_prioritise": req.InterstitialPrioritise,
 	})
 
 	h.db.Preload("Creator").Preload("Presenter").First(&project, "id = ?", project.ID)
@@ -221,6 +237,12 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		EnableProblem    bool   `json:"enable_problem"`
 		EnableVote       bool   `json:"enable_vote"`
 		EnablePrioritise bool   `json:"enable_prioritise"`
+
+		InterstitialProblem    string `json:"interstitial_problem"`
+		InterstitialBrainstorm string `json:"interstitial_brainstorm"`
+		InterstitialGroup      string `json:"interstitial_group"`
+		InterstitialVote       string `json:"interstitial_vote"`
+		InterstitialPrioritise string `json:"interstitial_prioritise"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -228,12 +250,17 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 	}
 
 	h.db.Model(&project).UpdateColumns(map[string]any{
-		"name":              req.Name,
-		"description":       req.Description,
-		"problem_statement": req.ProblemStatement,
-		"enable_problem":    req.EnableProblem,
-		"enable_vote":       req.EnableVote,
-		"enable_prioritise": req.EnablePrioritise,
+		"name":                    req.Name,
+		"description":             req.Description,
+		"problem_statement":       req.ProblemStatement,
+		"enable_problem":          req.EnableProblem,
+		"enable_vote":             req.EnableVote,
+		"enable_prioritise":       req.EnablePrioritise,
+		"interstitial_problem":    req.InterstitialProblem,
+		"interstitial_brainstorm": req.InterstitialBrainstorm,
+		"interstitial_group":      req.InterstitialGroup,
+		"interstitial_vote":       req.InterstitialVote,
+		"interstitial_prioritise": req.InterstitialPrioritise,
 	})
 
 	h.db.Preload("Creator").Preload("Presenter").First(&project, "id = ?", project.ID)

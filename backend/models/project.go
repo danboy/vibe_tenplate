@@ -24,6 +24,13 @@ type Project struct {
 	EnableVote         bool   `json:"enable_vote"         gorm:"not null;default:true"`
 	EnablePrioritise   bool   `json:"enable_prioritise"   gorm:"not null;default:true"`
 	ProblemStatement   string `json:"problem_statement"   gorm:"type:text;not null;default:''"`
+
+	// Custom interstitial descriptions (empty = use app default)
+	InterstitialProblem    string `json:"interstitial_problem"    gorm:"type:text;not null;default:''"`
+	InterstitialBrainstorm string `json:"interstitial_brainstorm" gorm:"type:text;not null;default:''"`
+	InterstitialGroup      string `json:"interstitial_group"      gorm:"type:text;not null;default:''"`
+	InterstitialVote       string `json:"interstitial_vote"       gorm:"type:text;not null;default:''"`
+	InterstitialPrioritise string `json:"interstitial_prioritise" gorm:"type:text;not null;default:''"`
 }
 
 func (p *Project) BeforeCreate(tx *gorm.DB) error {

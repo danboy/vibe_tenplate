@@ -804,6 +804,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
                 if (_showInterstitial)
                   _SlideInterstitial(
                     slide: _slide,
+                    customDescription: _project?.interstitialForSlide(_slide),
                     onDismiss: () {
                       setState(() => _dismissedInterstitials.add(_slide));
                       _saveDismissed();
@@ -861,13 +862,19 @@ const _interstitials = [
 class _SlideInterstitial extends StatelessWidget {
   final int slide;
   final VoidCallback onDismiss;
+  final String? customDescription;
 
-  const _SlideInterstitial({required this.slide, required this.onDismiss});
+  const _SlideInterstitial({
+    required this.slide,
+    required this.onDismiss,
+    this.customDescription,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final info = _interstitials[slide.clamp(0, _interstitials.length - 1)];
+    final description = customDescription ?? info.description;
 
     return Container(
       color: Colors.black.withValues(alpha: 0.55),
@@ -907,7 +914,7 @@ class _SlideInterstitial extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    info.description,
+                    description,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                       height: 1.5,
