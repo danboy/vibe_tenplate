@@ -122,7 +122,7 @@ class _Sidebar extends StatelessWidget {
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
       width: expanded ? 200.0 : 56.0,
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       child: _SidebarContent(
         expanded: expanded,
         selectedIndex: selectedIndex,
@@ -246,7 +246,7 @@ class _SidebarItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color =
-        selected ? theme.colorScheme.primary : const Color(0xFF888888);
+        selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -273,7 +273,7 @@ class _SidebarItem extends StatelessWidget {
                           selected ? FontWeight.w600 : FontWeight.w400,
                       color: selected
                           ? theme.colorScheme.primary
-                          : const Color(0xFF333333),
+                          : theme.colorScheme.onSurface,
                     ),
                   ),
                 ],
@@ -354,15 +354,15 @@ class _UserFooter extends StatelessWidget {
                         ),
                         Text(
                           user.email,
-                          style: const TextStyle(
-                              fontSize: 11, color: Color(0xFF888888)),
+                          style: TextStyle(
+                              fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
-                  const Icon(Icons.more_vert,
-                      size: 16, color: Color(0xFF888888)),
+                  Icon(Icons.more_vert,
+                      size: 16, color: theme.colorScheme.onSurfaceVariant),
                 ],
               )
             : Row(

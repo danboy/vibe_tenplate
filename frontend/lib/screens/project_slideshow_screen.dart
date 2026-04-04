@@ -978,7 +978,7 @@ class _SlideTabBar extends StatelessWidget {
       height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         border: Border(bottom: BorderSide(color: theme.colorScheme.outline)),
       ),
       child: Row(
@@ -1005,7 +1005,7 @@ class _SlideTabBar extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Icon(Icons.chevron_right,
-                      size: 14, color: Colors.grey[400]),
+                      size: 14, color: theme.colorScheme.onSurfaceVariant),
                 ),
             ];
           }),
@@ -1013,7 +1013,7 @@ class _SlideTabBar extends StatelessWidget {
           // Slide counter (position within enabled slides)
           Text(
             '${idx + 1} / ${enabledSlides.length}',
-            style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(width: 4),
           // Next arrow
@@ -1037,6 +1037,7 @@ class _NavArrow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: AnimatedOpacity(
@@ -1045,10 +1046,12 @@ class _NavArrow extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
-            color: enabled ? const Color(0xFFEEF0F4) : Colors.transparent,
+            color: enabled
+                ? theme.colorScheme.surfaceContainerHighest
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(4),
           ),
-          child: Icon(icon, size: 16, color: const Color(0xFF555555)),
+          child: Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
         ),
       ),
     );
@@ -1091,7 +1094,7 @@ class _SlideTab extends StatelessWidget {
                 size: 14,
                 color: selected
                     ? theme.colorScheme.primary
-                    : const Color(0xFF888888)),
+                    : theme.colorScheme.onSurfaceVariant),
             if (showLabel) ...[
             const SizedBox(width: 5),
             Text(
@@ -1102,7 +1105,7 @@ class _SlideTab extends StatelessWidget {
                     selected ? FontWeight.w600 : FontWeight.w400,
                 color: selected
                     ? theme.colorScheme.primary
-                    : const Color(0xFF888888),
+                    : theme.colorScheme.onSurfaceVariant,
               ),
             ),
             ],
@@ -1159,6 +1162,7 @@ class _InfiniteCanvas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
@@ -1167,8 +1171,12 @@ class _InfiniteCanvas extends StatelessWidget {
           children: [
             Positioned.fill(
               child: CustomPaint(
-                painter:
-                    _InfiniteGridPainter(offset: offset, scale: scale),
+                painter: _InfiniteGridPainter(
+                  offset: offset,
+                  scale: scale,
+                  bgColor: cs.surfaceContainerHighest,
+                  dotColor: cs.outline,
+                ),
               ),
             ),
             if (isGroupingMode)
@@ -1184,20 +1192,20 @@ class _InfiniteCanvas extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.sticky_note_2_outlined,
-                        size: 72, color: Colors.grey[400]),
+                        size: 72, color: cs.onSurfaceVariant),
                     const SizedBox(height: 16),
                     Text(
                         isGroupingMode
                             ? 'No notes to group yet'
                             : 'Start brainstorming!',
                         style: TextStyle(
-                            fontSize: 20, color: Colors.grey[600])),
+                            fontSize: 20, color: cs.onSurfaceVariant)),
                     const SizedBox(height: 8),
                     Text(
                         isGroupingMode
                             ? 'Switch to Brainstorm to add notes first'
                             : 'Tap + Add Note to place your first idea',
-                        style: TextStyle(color: Colors.grey[500])),
+                        style: TextStyle(color: cs.onSurfaceVariant)),
                   ],
                 ),
               ),
@@ -1275,19 +1283,26 @@ class _InfiniteCanvas extends StatelessWidget {
 class _InfiniteGridPainter extends CustomPainter {
   final Offset offset;
   final double scale;
+  final Color bgColor;
+  final Color dotColor;
 
-  const _InfiniteGridPainter({required this.offset, required this.scale});
+  const _InfiniteGridPainter({
+    required this.offset,
+    required this.scale,
+    required this.bgColor,
+    required this.dotColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawColor(const Color(0xFFEEF0F4), BlendMode.src);
+    canvas.drawColor(bgColor, BlendMode.src);
 
     const worldSpacing = 40.0;
     final screenSpacing = worldSpacing * scale;
     if (screenSpacing < 6) return;
 
     final paint = Paint()
-      ..color = const Color(0xFFDDE1EA)
+      ..color = dotColor
       ..strokeWidth = 1.5
       ..strokeCap = StrokeCap.round;
 
@@ -1312,7 +1327,8 @@ class _InfiniteGridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_InfiniteGridPainter old) =>
-      old.offset != offset || old.scale != scale;
+      old.offset != offset || old.scale != scale ||
+      old.bgColor != bgColor || old.dotColor != dotColor;
 }
 
 // ─── Group background painter ─────────────────────────────────────────────────
@@ -1596,7 +1612,7 @@ class _NoteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (note.isGroup) {
-      return _buildGroupCard();
+      return _buildGroupCard(context);
     }
 
     final bg = _hexColor(note.color);
@@ -1718,12 +1734,12 @@ class _NoteCard extends StatelessWidget {
     );
   }
 
-  Widget _buildGroupCard() {
+  Widget _buildGroupCard(BuildContext context) {
     final (fill, border) = _groupColors(note.id);
     return Material(
       elevation: 4,
       borderRadius: BorderRadius.circular(6),
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       shadowColor: Colors.black26,
       child: Container(
         width: _noteWidth,
@@ -1783,8 +1799,8 @@ class _NoteCard extends StatelessWidget {
                             fontSize: 13,
                             height: 1.45,
                             color: note.content.isEmpty
-                                ? Colors.black38
-                                : Colors.black87,
+                                ? Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
+                                : Theme.of(context).colorScheme.onSurface,
                             fontStyle: note.content.isEmpty
                                 ? FontStyle.italic
                                 : FontStyle.normal,
@@ -1801,7 +1817,8 @@ class _NoteCard extends StatelessWidget {
                   onTap: onDelete,
                   child: Container(
                     padding: const EdgeInsets.all(3),
-                    child: const Icon(Icons.close, size: 14, color: Colors.black38),
+                    child: Icon(Icons.close, size: 14,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ),
               ),
@@ -1891,35 +1908,36 @@ class _ProblemRichText extends StatelessWidget {
   final String text;
   const _ProblemRichText({required this.text});
 
-  static const _base = TextStyle(fontSize: 36, height: 1.6, color: Colors.black87);
+  static const _base = TextStyle(fontSize: 36, height: 1.6);
 
-  List<InlineSpan> _parse(String text) {
+  List<InlineSpan> _parse(String text, TextStyle base) {
     final spans = <InlineSpan>[];
     int last = 0;
     for (final match in _ProblemTextController._styleRegex.allMatches(text)) {
       if (match.start > last) {
-        spans.add(TextSpan(text: text.substring(last, match.start), style: _base));
+        spans.add(TextSpan(text: text.substring(last, match.start), style: base));
       }
       if (match.group(1) != null) {
-        spans.add(TextSpan(text: match.group(1), style: _base.copyWith(fontWeight: FontWeight.bold)));
+        spans.add(TextSpan(text: match.group(1), style: base.copyWith(fontWeight: FontWeight.bold)));
       } else if (match.group(2) != null) {
-        spans.add(TextSpan(text: match.group(2), style: _base.copyWith(decoration: TextDecoration.lineThrough)));
+        spans.add(TextSpan(text: match.group(2), style: base.copyWith(decoration: TextDecoration.lineThrough)));
       } else if (match.group(3) != null) {
-        spans.add(TextSpan(text: match.group(3), style: _base.copyWith(decoration: TextDecoration.underline)));
+        spans.add(TextSpan(text: match.group(3), style: base.copyWith(decoration: TextDecoration.underline)));
       } else if (match.group(4) != null) {
-        spans.add(TextSpan(text: match.group(4), style: _base.copyWith(fontStyle: FontStyle.italic)));
+        spans.add(TextSpan(text: match.group(4), style: base.copyWith(fontStyle: FontStyle.italic)));
       }
       last = match.end;
     }
     if (last < text.length) {
-      spans.add(TextSpan(text: text.substring(last), style: _base));
+      spans.add(TextSpan(text: text.substring(last), style: base));
     }
     return spans;
   }
 
   @override
   Widget build(BuildContext context) {
-    return RichText(text: TextSpan(children: _parse(text)));
+    final base = _base.copyWith(color: Theme.of(context).colorScheme.onSurface);
+    return RichText(text: TextSpan(children: _parse(text, base)));
   }
 }
 
@@ -2079,13 +2097,13 @@ class _ProblemToolbarState extends State<_ProblemToolbar> {
                 height: 280,
                 checkPlatformCompatibility: true,
                 emojiViewConfig: EmojiViewConfig(
-                  backgroundColor: Colors.white,
+                  backgroundColor: Theme.of(context).colorScheme.surface,
                   columns: 10,
                 ),
-                categoryViewConfig: const CategoryViewConfig(
-                  backgroundColor: Colors.white,
-                  indicatorColor: Color(0xFF4A90E2),
-                  iconColorSelected: Color(0xFF4A90E2),
+                categoryViewConfig: CategoryViewConfig(
+                  backgroundColor: Theme.of(context).colorScheme.surface,
+                  indicatorColor: Theme.of(context).colorScheme.primary,
+                  iconColorSelected: Theme.of(context).colorScheme.primary,
                 ),
               ),
             ),
@@ -2119,6 +2137,7 @@ class _ToolbarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Tooltip(
       message: tooltip,
       child: InkWell(
@@ -2129,12 +2148,10 @@ class _ToolbarButton extends StatelessWidget {
           height: 32,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: active ? const Color(0xFFE8F0FB) : Colors.white,
+            color: active ? cs.primaryContainer : cs.surface,
             borderRadius: BorderRadius.circular(4),
             border: Border.all(
-                color: active
-                    ? const Color(0xFF4A90E2)
-                    : const Color(0xFFE0E0E0)),
+                color: active ? cs.primary : cs.outline),
           ),
           child: Text(
             label,
@@ -2147,7 +2164,7 @@ class _ToolbarButton extends StatelessWidget {
                   : strikethrough
                       ? TextDecoration.lineThrough
                       : TextDecoration.none,
-              color: Colors.black87,
+              color: cs.onSurface,
             ),
           ),
         ),
@@ -2199,8 +2216,10 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     return Container(
-      color: const Color(0xFFF5F5F5),
+      color: theme.scaffoldBackgroundColor,
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
@@ -2211,8 +2230,7 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.lightbulb_outline,
-                        size: 20, color: Color(0xFF4A90E2)),
+                    Icon(Icons.lightbulb_outline, size: 20, color: cs.primary),
                     const SizedBox(width: 8),
                     Text(
                       'Problem Statement',
@@ -2220,7 +2238,7 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.6,
-                        color: Colors.grey[600],
+                        color: cs.onSurfaceVariant,
                       ),
                     ),
                     if (!widget.isPresenter) ...[
@@ -2229,13 +2247,12 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.grey[200],
+                          color: cs.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           'Read only',
-                          style: TextStyle(
-                              fontSize: 11, color: Colors.grey[500]),
+                          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                         ),
                       ),
                     ],
@@ -2253,29 +2270,27 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
                           maxLines: null,
                           expands: true,
                           textAlignVertical: TextAlignVertical.top,
-                          style: const TextStyle(
-                              fontSize: 36, height: 1.6, color: Colors.black87),
+                          style: TextStyle(
+                              fontSize: 36, height: 1.6, color: cs.onSurface),
                           decoration: InputDecoration(
                             hintText:
                                 'Describe the problem you\'re trying to solve…',
                             hintStyle: TextStyle(
-                                color: Colors.grey[400], fontSize: 36),
+                                color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                                fontSize: 36),
                             filled: true,
-                            fillColor: Colors.white,
+                            fillColor: cs.surface,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
-                              borderSide:
-                                  const BorderSide(color: Color(0xFFE0E0E0)),
+                              borderSide: BorderSide(color: cs.outline),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
-                              borderSide:
-                                  const BorderSide(color: Color(0xFFE0E0E0)),
+                              borderSide: BorderSide(color: cs.outline),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
-                              borderSide:
-                                  const BorderSide(color: Color(0xFF4A90E2)),
+                              borderSide: BorderSide(color: cs.primary),
                             ),
                             contentPadding: const EdgeInsets.all(20),
                           ),
@@ -2285,16 +2300,16 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: cs.surface,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFFE0E0E0)),
+                            border: Border.all(color: cs.outline),
                           ),
                           child: widget.text.isEmpty
                               ? Text(
                                   'No problem statement defined yet.',
                                   style: TextStyle(
                                       fontSize: 36,
-                                      color: Colors.grey[400],
+                                      color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                                       fontStyle: FontStyle.italic),
                                 )
                               : _ProblemRichText(text: widget.text),
@@ -2359,17 +2374,18 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
     final items = widget.notes.where((n) => n.isGroup || n.parentId == null).toList();
 
     if (items.isEmpty) {
+      final cs = Theme.of(context).colorScheme;
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.grid_view_outlined, size: 72, color: Colors.grey[400]),
+            Icon(Icons.grid_view_outlined, size: 72, color: cs.onSurfaceVariant),
             const SizedBox(height: 16),
             Text('No notes yet',
-                style: TextStyle(fontSize: 20, color: Colors.grey[600])),
+                style: TextStyle(fontSize: 20, color: cs.onSurfaceVariant)),
             const SizedBox(height: 8),
             Text('Add notes in the Brainstorm slide first',
-                style: TextStyle(color: Colors.grey[500])),
+                style: TextStyle(color: cs.onSurfaceVariant)),
           ],
         ),
       );
@@ -2377,15 +2393,16 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
 
     final isMobile = MediaQuery.of(context).size.width < 600;
 
+    final cs = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // ── Left list ──────────────────────────────────────────────────────
         if (!isMobile) Container(
           width: 220,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(right: BorderSide(color: Color(0xFFE0E0E0))),
+          decoration: BoxDecoration(
+            color: cs.surface,
+            border: Border(right: BorderSide(color: cs.outline)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2397,7 +2414,7 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
                   style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      color: Colors.grey[500],
+                      color: cs.onSurfaceVariant,
                       letterSpacing: 0.8),
                 ),
               ),
@@ -2439,8 +2456,8 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
                               children: [
                                 Text(
                                   label,
-                                  style: const TextStyle(
-                                      fontSize: 12, color: Colors.black87),
+                                  style: TextStyle(
+                                      fontSize: 12, color: cs.onSurface),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -2448,7 +2465,7 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
                                   Text(
                                     '$childCount item${childCount == 1 ? '' : 's'}',
                                     style: TextStyle(
-                                        fontSize: 10, color: Colors.grey[500]),
+                                        fontSize: 10, color: cs.onSurfaceVariant),
                                   ),
                               ],
                             ),
@@ -2485,17 +2502,18 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
                   matrixTop + (1.0 - norm.dy) * matrixH,
                 );
 
+            final isDarkMode = Theme.of(context).brightness == Brightness.dark;
             return Stack(key: _stackKey, children: [
-              // Light grey fill behind everything
+              // Background fill
               Positioned.fill(
-                  child: Container(color: const Color(0xFFF5F5F5))),
+                  child: Container(color: Theme.of(context).scaffoldBackgroundColor)),
               // Quadrant grid
               Positioned(
                 left: matrixLeft,
                 top: matrixTop,
                 width: matrixW,
                 height: matrixH,
-                child: const CustomPaint(painter: _MatrixPainter()),
+                child: CustomPaint(painter: _MatrixPainter(isDark: isDarkMode)),
               ),
               // Y-axis label
               Positioned(
@@ -2509,7 +2527,7 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
                     child: Text('Value  →',
                         style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey[600],
+                            color: cs.onSurfaceVariant,
                             fontWeight: FontWeight.w500)),
                   ),
                 ),
@@ -2524,7 +2542,7 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
                   child: Text('Cost  →',
                       style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey[600],
+                          color: cs.onSurfaceVariant,
                           fontWeight: FontWeight.w500)),
                 ),
               ),
@@ -2534,28 +2552,28 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
                 top: matrixBottom + 4,
                 child: Text('Low',
                     style:
-                        TextStyle(fontSize: 11, color: Colors.grey[500])),
+                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
               ),
               Positioned(
                 right: outerPad + 4,
                 top: matrixBottom + 4,
                 child: Text('High',
                     style:
-                        TextStyle(fontSize: 11, color: Colors.grey[500])),
+                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
               ),
               Positioned(
                 left: 4,
                 top: matrixBottom - 14,
                 child: Text('Low',
                     style:
-                        TextStyle(fontSize: 11, color: Colors.grey[500])),
+                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
               ),
               Positioned(
                 left: 4,
                 top: matrixTop + 2,
                 child: Text('High',
                     style:
-                        TextStyle(fontSize: 11, color: Colors.grey[500])),
+                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
               ),
               // Quadrant labels
               Positioned(
@@ -2659,8 +2677,8 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
                             width: 72,
                             child: Text(
                               note.content.isEmpty ? '—' : note.content,
-                              style: const TextStyle(
-                                  fontSize: 9, color: Colors.black54),
+                              style: TextStyle(
+                                  fontSize: 9, color: cs.onSurfaceVariant),
                               textAlign: TextAlign.center,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -2683,14 +2701,14 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 12, color: color.withOpacity(0.55)),
+        Icon(icon, size: 12, color: color.withValues(alpha: 0.55)),
         const SizedBox(width: 4),
         Text(
           label,
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color: color.withOpacity(0.55),
+            color: color.withValues(alpha: 0.55),
           ),
         ),
       ],
@@ -2699,33 +2717,40 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
 }
 
 class _MatrixPainter extends CustomPainter {
-  const _MatrixPainter();
+  final bool isDark;
+  const _MatrixPainter({required this.isDark});
 
   @override
   void paint(Canvas canvas, Size size) {
     final half = Size(size.width / 2, size.height / 2);
-    // Quadrant fills
+    // Quadrant fills — muted in dark mode
+    final q1 = isDark ? const Color(0xFF1B3A1F) : const Color(0xFFE8F5E9);
+    final q2 = isDark ? const Color(0xFF0D2744) : const Color(0xFFE3F2FD);
+    final q3 = isDark ? const Color(0xFF2A1F14) : const Color(0xFFFFF8E1);
+    final q4 = isDark ? const Color(0xFF3A0F0F) : const Color(0xFFFFEBEE);
     canvas.drawRect(Rect.fromLTWH(0, 0, half.width, half.height),
-        Paint()..color = const Color(0xFFE8F5E9));
+        Paint()..color = q1);
     canvas.drawRect(
         Rect.fromLTWH(half.width, 0, half.width, half.height),
-        Paint()..color = const Color(0xFFE3F2FD));
+        Paint()..color = q2);
     canvas.drawRect(
         Rect.fromLTWH(0, half.height, half.width, half.height),
-        Paint()..color = const Color(0xFFFFF8E1));
+        Paint()..color = q3);
     canvas.drawRect(
         Rect.fromLTWH(half.width, half.height, half.width, half.height),
-        Paint()..color = const Color(0xFFFFEBEE));
+        Paint()..color = q4);
 
+    final borderColor = isDark ? const Color(0xFF3A3A55) : const Color(0xFFBBBBBB);
     final border = Paint()
-      ..color = const Color(0xFFBBBBBB)
+      ..color = borderColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
     canvas.drawRect(
         Rect.fromLTWH(0, 0, size.width, size.height), border);
 
+    final dividerColor = isDark ? const Color(0xFF555566) : const Color(0xFF999999);
     final divider = Paint()
-      ..color = const Color(0xFF999999)
+      ..color = dividerColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
     canvas.drawLine(
@@ -2735,7 +2760,7 @@ class _MatrixPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_MatrixPainter old) => false;
+  bool shouldRepaint(_MatrixPainter old) => old.isDark != isDark;
 }
 
 // ─── Vote canvas ───────────────────────────────────────────────────────────────
@@ -2761,12 +2786,18 @@ class _VoteCanvas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Stack(
       clipBehavior: Clip.hardEdge,
       children: [
         Positioned.fill(
           child: CustomPaint(
-            painter: _InfiniteGridPainter(offset: offset, scale: scale),
+            painter: _InfiniteGridPainter(
+              offset: offset,
+              scale: scale,
+              bgColor: cs.surfaceContainerHighest,
+              dotColor: cs.outline,
+            ),
           ),
         ),
         Positioned.fill(
@@ -2777,20 +2808,23 @@ class _VoteCanvas extends StatelessWidget {
         ),
         if (notes.isEmpty)
           Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.how_to_vote_outlined,
-                    size: 72, color: Colors.grey[400]),
-                const SizedBox(height: 16),
-                Text('No notes to vote on yet',
-                    style:
-                        TextStyle(fontSize: 20, color: Colors.grey[600])),
-                const SizedBox(height: 8),
-                Text('Add notes in Brainstorm and group them first',
-                    style: TextStyle(color: Colors.grey[500])),
-              ],
-            ),
+            child: Builder(builder: (context) {
+              final cs = Theme.of(context).colorScheme;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.how_to_vote_outlined,
+                      size: 72, color: cs.onSurfaceVariant),
+                  const SizedBox(height: 16),
+                  Text('No notes to vote on yet',
+                      style:
+                          TextStyle(fontSize: 20, color: cs.onSurfaceVariant)),
+                  const SizedBox(height: 8),
+                  Text('Add notes in Brainstorm and group them first',
+                      style: TextStyle(color: cs.onSurfaceVariant)),
+                ],
+              );
+            }),
           ),
         // Child notes first, then group notes on top (same z-order as canvas).
         ...[...notes.where((n) => !n.isGroup), ...notes.where((n) => n.isGroup)]
@@ -2858,7 +2892,7 @@ class _VotePositionedNote extends StatelessWidget {
                           borderRadius: BorderRadius.circular(6),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.amber.withOpacity(0.6),
+                              color: Colors.amber.withValues(alpha: 0.6),
                               blurRadius: 14,
                               spreadRadius: 3,
                             ),
@@ -2925,6 +2959,7 @@ class _StarTray extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const total = 4;
+    final cs = Theme.of(context).colorScheme;
     return Positioned(
       bottom: 20,
       left: 0,
@@ -2934,12 +2969,12 @@ class _StarTray extends StatelessWidget {
           padding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: cs.surface,
             borderRadius: BorderRadius.circular(30),
             boxShadow: [
               BoxShadow(
                 blurRadius: 12,
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
                 offset: const Offset(0, 4),
               ),
             ],
@@ -2951,14 +2986,14 @@ class _StarTray extends StatelessWidget {
                 'Drag to vote  ',
                 style: TextStyle(
                     fontSize: 12,
-                    color: Colors.grey[600],
+                    color: cs.onSurfaceVariant,
                     fontWeight: FontWeight.w500),
               ),
               ...List.generate(total, (i) {
                 final isAvailable = i < starsLeft;
                 final star = Icon(
                   Icons.star_rounded,
-                  color: isAvailable ? Colors.amber : Colors.grey[300],
+                  color: isAvailable ? Colors.amber : cs.outline,
                   size: 32,
                 );
                 if (!isAvailable) return star;
@@ -2966,11 +3001,11 @@ class _StarTray extends StatelessWidget {
                   data: true,
                   feedback: Material(
                     color: Colors.transparent,
-                    child: Icon(Icons.star_rounded,
+                    child: const Icon(Icons.star_rounded,
                         color: Colors.amber, size: 38),
                   ),
                   childWhenDragging: Icon(Icons.star_outline_rounded,
-                      color: Colors.grey[300], size: 32),
+                      color: cs.outline, size: 32),
                   child: star,
                 );
               }),
@@ -2978,7 +3013,7 @@ class _StarTray extends StatelessWidget {
               Text(
                 '$starsLeft / $total',
                 style:
-                    TextStyle(fontSize: 11, color: Colors.grey[500]),
+                    TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
               ),
             ],
           ),
