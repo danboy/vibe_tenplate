@@ -20,11 +20,46 @@ class GroupDetailScreen extends StatefulWidget {
 
 class _GroupDetailScreenState extends State<GroupDetailScreen> {
   late Future<Group> _future;
+  bool _awaitingPlanUpdate = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+    if (Uri.base.queryParameters['billing'] == 'success') {
+      _awaitingPlanUpdate = true;
+      _pollForPlanUpdate();
+    }
+  }
+
+  /// Polls getGroup every 2 seconds until the plan is no longer 'free',
+  /// which means the Stripe webhook has been processed.
+  Future<void> _pollForPlanUpdate() async {
+    const maxAttempts = 20;
+    final api = context.read<AuthProvider>().api;
+
+    for (var i = 0; i < maxAttempts; i++) {
+      await Future.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      try {
+        final group = await api.getGroup(widget.groupSlug);
+        if (group.plan != 'free') {
+          // Remove the billing=success query param from the browser URL
+          html.window.history.replaceState(
+            null,
+            '',
+            Uri.base.replace(queryParameters: {}).toString(),
+          );
+          setState(() {
+            _future = Future.value(group);
+            _awaitingPlanUpdate = false;
+          });
+          return;
+        }
+      } catch (_) {}
+    }
+
+    if (mounted) setState(() => _awaitingPlanUpdate = false);
   }
 
   void _load() {
@@ -145,10 +180,13 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                           ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 12),
-                    _GroupPlanSelector(
-                      group: group,
-                      onPlanChanged: _refresh,
-                    ),
+                    if (_awaitingPlanUpdate)
+                      const _PlanConfirmingBanner()
+                    else
+                      _GroupPlanSelector(
+                        group: group,
+                        onPlanChanged: _refresh,
+                      ),
                   ],
                 ],
               ),
@@ -337,6 +375,40 @@ class _InviteLink extends StatelessWidget {
                     duration: Duration(seconds: 2)),
               );
             },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlanConfirmingBanner extends StatelessWidget {
+  const _PlanConfirmingBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.4)),
+        color: theme.colorScheme.primary.withValues(alpha: 0.05),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            'Confirming payment…',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
