@@ -14,8 +14,9 @@ type User struct {
 	DeletedAt gorm.DeletedAt `json:"-"        gorm:"index"`
 	Username  string         `json:"username" gorm:"uniqueIndex;not null"`
 	Email     string         `json:"email"    gorm:"uniqueIndex;not null"`
-	Password  string         `json:"-"        gorm:"not null"`
-	Groups    []Group        `json:"groups,omitempty" gorm:"many2many:user_groups;"`
+	Password         string         `json:"-"        gorm:"not null"`
+	StripeCustomerID string         `json:"-"        gorm:"type:text"`
+	Groups           []Group        `json:"groups,omitempty" gorm:"many2many:user_groups;"`
 }
 
 func (u *User) BeforeCreate(tx *gorm.DB) error {

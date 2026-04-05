@@ -1,3 +1,6 @@
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -354,50 +357,174 @@ class _GroupPlanSelector extends StatefulWidget {
 class _GroupPlanSelectorState extends State<_GroupPlanSelector> {
   bool _loading = false;
 
-  Future<void> _selectPlan(String plan) async {
-    if (plan == widget.group.plan || _loading) return;
+  Future<void> _redirectToCheckout(String plan) async {
+    if (_loading) return;
     setState(() => _loading = true);
     try {
-      await context.read<AuthProvider>().api.updateGroupPlan(widget.group.slug, plan);
-      widget.onPlanChanged();
+      final api = context.read<AuthProvider>().api;
+      final successUrl = Uri.base
+          .replace(queryParameters: {'billing': 'success'})
+          .toString();
+      final url = await api.createCheckoutSession(
+        groupSlug: widget.group.slug,
+        plan: plan,
+        successUrl: successUrl,
+        cancelUrl: Uri.base.toString(),
+      );
+      html.window.location.href = url;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(e.toString())));
+        setState(() => _loading = false);
       }
-    } finally {
-      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _redirectToPortal() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      final api = context.read<AuthProvider>().api;
+      final url = await api.createBillingPortalSession(
+        groupSlug: widget.group.slug,
+        returnUrl: Uri.base.toString(),
+      );
+      html.window.location.href = url;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+        setState(() => _loading = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isPaid = widget.group.plan != 'free';
+
+    if (isPaid) {
+      return _PaidPlanView(
+        group: widget.group,
+        loading: _loading,
+        onManageBilling: _redirectToPortal,
+      );
+    }
+
     return Column(
       children: [
         _PlanCard(
           name: 'Free',
           planKey: 'free',
           currentPlan: widget.group.plan,
+          price: null,
           features: const ['3 projects', 'Default activity settings'],
-          onSelect: _loading ? null : () => _selectPlan('free'),
+          onSelect: null,
         ),
         const SizedBox(height: 10),
         _PlanCard(
           name: 'Standard',
           planKey: 'standard',
           currentPlan: widget.group.plan,
-          features: const ['Unlimited projects', 'Custom activity settings'],
-          onSelect: _loading ? null : () => _selectPlan('standard'),
+          price: '\$4.99 / month',
+          features: const ['Unlimited projects', 'Custom activity settings', 'Guest access'],
+          onSelect: _loading ? null : () => _redirectToCheckout('standard'),
         ),
         const SizedBox(height: 10),
         _PlanCard(
           name: 'Pro',
           planKey: 'pro',
           currentPlan: widget.group.plan,
-          features: const ['Unlimited projects', 'Custom activity settings', 'Priority support'],
-          onSelect: _loading ? null : () => _selectPlan('pro'),
+          price: '\$9.99 / month',
+          features: const ['Unlimited projects', 'Custom activity settings', 'Guest access'],
+          onSelect: _loading ? null : () => _redirectToCheckout('pro'),
         ),
+        if (_loading) ...[
+          const SizedBox(height: 16),
+          const Center(child: CircularProgressIndicator()),
+        ],
       ],
+    );
+  }
+}
+
+class _PaidPlanView extends StatelessWidget {
+  final Group group;
+  final bool loading;
+  final VoidCallback onManageBilling;
+
+  const _PaidPlanView({
+    required this.group,
+    required this.loading,
+    required this.onManageBilling,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final planName = group.plan == 'pro' ? 'Pro' : 'Standard';
+    final planPrice = group.plan == 'pro' ? '\$9.99 / month' : '\$4.99 / month';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.primary, width: 2),
+        color: theme.colorScheme.primary.withValues(alpha: 0.05),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                planName,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  'Active',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: theme.colorScheme.onPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                planPrice,
+                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: loading ? null : onManageBilling,
+              icon: loading
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.open_in_new, size: 16),
+              label: const Text('Manage billing'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -406,6 +533,7 @@ class _PlanCard extends StatelessWidget {
   final String name;
   final String planKey;
   final String currentPlan;
+  final String? price;
   final List<String> features;
   final VoidCallback? onSelect;
 
@@ -413,6 +541,7 @@ class _PlanCard extends StatelessWidget {
     required this.name,
     required this.planKey,
     required this.currentPlan,
+    required this.price,
     required this.features,
     required this.onSelect,
   });
@@ -473,6 +602,16 @@ class _PlanCard extends StatelessWidget {
                             ),
                           ),
                         ],
+                        if (price != null) ...[
+                          const Spacer(),
+                          Text(
+                            price!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 6),
@@ -497,8 +636,16 @@ class _PlanCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (!isActive)
-                Icon(Icons.chevron_right, color: Colors.grey.shade400),
+              if (!isActive && onSelect != null)
+                FilledButton.tonal(
+                  onPressed: onSelect,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    minimumSize: const Size(0, 32),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text('Upgrade'),
+                ),
             ],
           ),
         ),

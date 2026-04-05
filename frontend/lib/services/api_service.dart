@@ -190,6 +190,36 @@ class ApiService {
     await _parseMap(response);
   }
 
+  Future<String> createCheckoutSession({
+    required String groupSlug,
+    required String plan,
+    required String successUrl,
+    required String cancelUrl,
+  }) async {
+    final response = await _post(
+      Uri.parse('$baseUrl/groups/$groupSlug/checkout'),
+      body: json.encode({
+        'plan': plan,
+        'success_url': successUrl,
+        'cancel_url': cancelUrl,
+      }),
+    );
+    final data = await _parseMap(response);
+    return data['url'] as String;
+  }
+
+  Future<String> createBillingPortalSession({
+    required String groupSlug,
+    required String returnUrl,
+  }) async {
+    final response = await _post(
+      Uri.parse('$baseUrl/groups/$groupSlug/billing-portal'),
+      body: json.encode({'return_url': returnUrl}),
+    );
+    final data = await _parseMap(response);
+    return data['url'] as String;
+  }
+
   Future<Group> updateGroupPlan(String groupSlug, String plan) async {
     final response = await _patch(
       Uri.parse('$baseUrl/groups/$groupSlug/plan'),

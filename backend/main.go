@@ -41,9 +41,13 @@ func main() {
 	projectHandler := handlers.NewProjectHandler(db)
 	slideshowHandler := handlers.NewSlideshowHandler(db)
 	guestHandler := handlers.NewGuestHandler(db)
+	billingHandler := handlers.NewBillingHandler(db)
 
 	// WebSocket — auth is handled inside the handler via ?token= query param
 	r.GET("/ws/projects/:id", slideshowHandler.Connect)
+
+	// Stripe webhook — must be outside auth middleware; reads raw body for sig verification
+	r.POST("/stripe/webhook", billingHandler.HandleWebhook)
 
 	api := r.Group("/api")
 	{
@@ -78,6 +82,8 @@ func main() {
 			protected.DELETE("/groups/:id/projects/:pid", projectHandler.DeleteProject)
 			protected.PUT("/groups/:id/projects/:pid/presenter", projectHandler.SetPresenter)
 			protected.PATCH("/groups/:id/plan", groupHandler.UpdateGroupPlan)
+			protected.POST("/groups/:id/checkout", billingHandler.CreateCheckoutSession)
+			protected.POST("/groups/:id/billing-portal", billingHandler.CreatePortalSession)
 		}
 	}
 
