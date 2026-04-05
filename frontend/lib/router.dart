@@ -18,8 +18,11 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
         final loc = state.matchedLocation;
         final isOnAuthPage =
             loc.startsWith('/auth/login') || loc.startsWith('/auth/register');
+        // Slideshow handles guest access internally — don't redirect to login
+        final isSlideshow =
+            loc.contains('/projects/') && loc.startsWith('/groups/');
 
-        if (!auth.isAuthenticated && !isOnAuthPage) {
+        if (!auth.isAuthenticated && !isOnAuthPage && !isSlideshow) {
           final dest = Uri.encodeComponent(state.uri.toString());
           return '/auth/login?redirect=$dest';
         }

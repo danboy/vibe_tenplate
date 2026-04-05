@@ -132,6 +132,21 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                         isOwner: m.id == group.ownerId,
                         isMe: m.id == me.id,
                       )),
+                  if (isOwner) ...[
+                    const SizedBox(height: 24),
+                    Text(
+                      'Plan',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    _GroupPlanSelector(
+                      group: group,
+                      onPlanChanged: _refresh,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -321,6 +336,172 @@ class _InviteLink extends StatelessWidget {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _GroupPlanSelector extends StatefulWidget {
+  final Group group;
+  final VoidCallback onPlanChanged;
+
+  const _GroupPlanSelector({required this.group, required this.onPlanChanged});
+
+  @override
+  State<_GroupPlanSelector> createState() => _GroupPlanSelectorState();
+}
+
+class _GroupPlanSelectorState extends State<_GroupPlanSelector> {
+  bool _loading = false;
+
+  Future<void> _selectPlan(String plan) async {
+    if (plan == widget.group.plan || _loading) return;
+    setState(() => _loading = true);
+    try {
+      await context.read<AuthProvider>().api.updateGroupPlan(widget.group.slug, plan);
+      widget.onPlanChanged();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _PlanCard(
+          name: 'Free',
+          planKey: 'free',
+          currentPlan: widget.group.plan,
+          features: const ['3 projects', 'Default activity settings'],
+          onSelect: _loading ? null : () => _selectPlan('free'),
+        ),
+        const SizedBox(height: 10),
+        _PlanCard(
+          name: 'Standard',
+          planKey: 'standard',
+          currentPlan: widget.group.plan,
+          features: const ['Unlimited projects', 'Custom activity settings'],
+          onSelect: _loading ? null : () => _selectPlan('standard'),
+        ),
+        const SizedBox(height: 10),
+        _PlanCard(
+          name: 'Pro',
+          planKey: 'pro',
+          currentPlan: widget.group.plan,
+          features: const ['Unlimited projects', 'Custom activity settings', 'Priority support'],
+          onSelect: _loading ? null : () => _selectPlan('pro'),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlanCard extends StatelessWidget {
+  final String name;
+  final String planKey;
+  final String currentPlan;
+  final List<String> features;
+  final VoidCallback? onSelect;
+
+  const _PlanCard({
+    required this.name,
+    required this.planKey,
+    required this.currentPlan,
+    required this.features,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isActive = currentPlan == planKey;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isActive ? theme.colorScheme.primary : Colors.grey.shade300,
+          width: isActive ? 2 : 1,
+        ),
+        color: isActive
+            ? theme.colorScheme.primary.withValues(alpha: 0.05)
+            : theme.colorScheme.surface,
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: isActive ? null : onSelect,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          name,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: isActive ? theme.colorScheme.primary : null,
+                          ),
+                        ),
+                        if (isActive) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              'Current',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: theme.colorScheme.onPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ...features.map(
+                      (f) => Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Row(
+                          children: [
+                            Icon(Icons.check,
+                                size: 14,
+                                color: isActive
+                                    ? theme.colorScheme.primary
+                                    : Colors.grey),
+                            const SizedBox(width: 6),
+                            Text(f,
+                                style: TextStyle(
+                                    fontSize: 13, color: Colors.grey[700])),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (!isActive)
+                Icon(Icons.chevron_right, color: Colors.grey.shade400),
+            ],
+          ),
+        ),
       ),
     );
   }

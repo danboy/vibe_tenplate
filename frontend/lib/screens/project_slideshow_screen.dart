@@ -38,6 +38,8 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
   final _rng = Random();
   Project? _project;
   Group? _group;
+  bool _loginRequired = false;
+  bool _isGuest = false;
 
   // 0 = problem, 1 = brainstorm, 2 = group, 3 = vote, 4 = prioritise
   int _slide = 0;
@@ -132,24 +134,111 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
   }
 
   Future<void> _loadAndConnect() async {
-    try {
-      final api = context.read<AuthProvider>().api;
-      final results = await Future.wait([
-        api.getProject(groupSlug: widget.groupSlug, projectSlug: widget.projectSlug),
-        api.getGroup(widget.groupSlug),
-      ]);
-      if (!mounted) return;
-      final project = results[0] as Project;
-      setState(() {
-        _project = project;
-        _group = results[1] as Group;
-        if (!project.enableProblem && _slide == 0) _slide = 1;
-      });
-      _connect(_project!.id);
-    } catch (_) {}
+    final auth = context.read<AuthProvider>();
+
+    if (auth.isAuthenticated) {
+      try {
+        final api = auth.api;
+        final results = await Future.wait([
+          api.getProject(groupSlug: widget.groupSlug, projectSlug: widget.projectSlug),
+          api.getGroup(widget.groupSlug),
+        ]);
+        if (!mounted) return;
+        final project = results[0] as Project;
+        setState(() {
+          _project = project;
+          _group = results[1] as Group;
+          if (!project.enableProblem && _slide == 0) _slide = 1;
+        });
+        _connect(project.id);
+      } catch (_) {}
+    } else {
+      // Unauthenticated — check if guests are enabled for this project.
+      try {
+        final info = await ApiService().getGuestProject(
+            widget.groupSlug, widget.projectSlug);
+        if (!mounted) return;
+        if (info['guests_enabled'] != true) {
+          setState(() => _loginRequired = true);
+          return;
+        }
+        // Show display name prompt after the frame is drawn.
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted) return;
+          final name = await _showGuestNameDialog();
+          if (name == null || !mounted) return;
+          final token = await ApiService()
+              .guestJoin(info['id'] as String, name);
+          if (!mounted) return;
+          setState(() {
+            _isGuest = true;
+            // Minimal project info for guests
+            _project = Project(
+              id: info['id'] as String,
+              slug: widget.projectSlug,
+              name: info['name'] as String,
+              description: '',
+              groupId: '',
+              createdBy: '',
+              createdAt: DateTime.now(),
+              enableProblem: info['enable_problem'] as bool? ?? true,
+            );
+            if (_project?.enableProblem == false && _slide == 0) _slide = 1;
+          });
+          _connect(info['id'] as String, guestToken: token);
+        });
+      } catch (_) {
+        if (mounted) setState(() => _loginRequired = true);
+      }
+    }
+  }
+
+  Future<String?> _showGuestNameDialog() {
+    final ctrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Join as Guest'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: ctrl,
+            decoration: const InputDecoration(
+              labelText: 'Your display name',
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
+            validator: (v) =>
+                v == null || v.trim().isEmpty ? 'Name is required' : null,
+            onFieldSubmitted: (_) {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(ctx, ctrl.text.trim());
+              }
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(ctx, ctrl.text.trim());
+              }
+            },
+            child: const Text('Join'),
+          ),
+        ],
+      ),
+    );
   }
 
   bool get _isPresenter {
+    if (_isGuest) return false;
     final userId = context.read<AuthProvider>().user?.id;
     if (userId == null || _project == null) return false;
     if (_project!.presenterId != null) return userId == _project!.presenterId;
@@ -157,13 +246,14 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
   }
 
   bool get _canAssignPresenter {
+    if (_isGuest) return false;
     final userId = context.read<AuthProvider>().user?.id;
     if (userId == null || _project == null) return false;
     return userId == _project!.createdBy || userId == _group?.ownerId;
   }
 
-  void _connect(String projectId) {
-    final token = context.read<AuthProvider>().token;
+  void _connect(String projectId, {String? guestToken}) {
+    final token = guestToken ?? context.read<AuthProvider>().token;
     final uri = Uri.parse(
         '${ApiService.wsBaseUrl}/ws/projects/$projectId?token=$token');
     _channel = WebSocketChannel.connect(uri);
@@ -621,6 +711,30 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loginRequired) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock_outline, size: 64, color: Colors.grey),
+              const SizedBox(height: 16),
+              const Text('Login required',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              const Text('This project does not allow guest access.',
+                  style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: () => context.go('/auth/login'),
+                child: const Text('Log in'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final isProblemMode = _slide == 0;
     final isGroupingMode = _slide == 2;
     final enableProblem = _project?.enableProblem ?? true;

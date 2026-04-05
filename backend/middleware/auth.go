@@ -10,7 +10,9 @@ import (
 )
 
 type Claims struct {
-	UserID string `json:"user_id"`
+	UserID      string `json:"user_id"`
+	DisplayName string `json:"display_name,omitempty"`
+	IsGuest     bool   `json:"is_guest,omitempty"`
 	jwt.RegisteredClaims
 }
 

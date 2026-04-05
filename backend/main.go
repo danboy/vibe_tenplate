@@ -40,6 +40,7 @@ func main() {
 	groupHandler := handlers.NewGroupHandler(db)
 	projectHandler := handlers.NewProjectHandler(db)
 	slideshowHandler := handlers.NewSlideshowHandler(db)
+	guestHandler := handlers.NewGuestHandler(db)
 
 	// WebSocket — auth is handled inside the handler via ?token= query param
 	r.GET("/ws/projects/:id", slideshowHandler.Connect)
@@ -50,6 +51,13 @@ func main() {
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
+		}
+
+		// Public guest endpoints — no auth required
+		guest := api.Group("/guest")
+		{
+			guest.GET("/groups/:id/projects/:pid", guestHandler.GetGuestProject)
+			guest.POST("/projects/:id/join", guestHandler.GuestJoin)
 		}
 
 		protected := api.Group("/")
@@ -69,6 +77,7 @@ func main() {
 			protected.PATCH("/groups/:id/projects/:pid", projectHandler.UpdateProject)
 			protected.DELETE("/groups/:id/projects/:pid", projectHandler.DeleteProject)
 			protected.PUT("/groups/:id/projects/:pid/presenter", projectHandler.SetPresenter)
+			protected.PATCH("/groups/:id/plan", groupHandler.UpdateGroupPlan)
 		}
 	}
 

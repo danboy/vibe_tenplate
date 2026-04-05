@@ -121,6 +121,27 @@ class ApiService {
     return User.fromJson(data);
   }
 
+
+  // ── Guest ───────────────────────────────────────────────────────────────────
+
+  /// Fetches minimal project info without auth — used to check if guests are enabled.
+  Future<Map<String, dynamic>> getGuestProject(String groupSlug, String projectSlug) async {
+    final response = await _get(
+      Uri.parse('$baseUrl/guest/groups/$groupSlug/projects/$projectSlug'),
+    );
+    return _parseMap(response);
+  }
+
+  /// Joins a project as a guest and returns a short-lived token.
+  Future<String> guestJoin(String projectId, String displayName) async {
+    final response = await _post(
+      Uri.parse('$baseUrl/guest/projects/$projectId/join'),
+      body: json.encode({'display_name': displayName}),
+    );
+    final data = await _parseMap(response);
+    return data['token'] as String;
+  }
+
   // ── Groups ──────────────────────────────────────────────────────────────────
 
   Future<List<Group>> listGroups() async {
@@ -169,6 +190,15 @@ class ApiService {
     await _parseMap(response);
   }
 
+  Future<Group> updateGroupPlan(String groupSlug, String plan) async {
+    final response = await _patch(
+      Uri.parse('$baseUrl/groups/$groupSlug/plan'),
+      body: json.encode({'plan': plan}),
+    );
+    final data = await _parseMap(response);
+    return Group.fromJson(data);
+  }
+
   Future<void> leaveGroup(String slug) async {
     final response = await _post(Uri.parse('$baseUrl/groups/$slug/leave'));
     await _parseMap(response);
@@ -209,6 +239,7 @@ class ApiService {
     required bool enableProblem,
     required bool enableVote,
     required bool enablePrioritise,
+    bool guestsEnabled = false,
     String interstitialProblem = '',
     String interstitialBrainstorm = '',
     String interstitialGroup = '',
@@ -224,6 +255,7 @@ class ApiService {
         'enable_problem': enableProblem,
         'enable_vote': enableVote,
         'enable_prioritise': enablePrioritise,
+        'guests_enabled': guestsEnabled,
         'interstitial_problem': interstitialProblem,
         'interstitial_brainstorm': interstitialBrainstorm,
         'interstitial_group': interstitialGroup,
@@ -244,6 +276,7 @@ class ApiService {
     required bool enableProblem,
     required bool enableVote,
     required bool enablePrioritise,
+    bool guestsEnabled = false,
     String interstitialProblem = '',
     String interstitialBrainstorm = '',
     String interstitialGroup = '',
@@ -259,6 +292,7 @@ class ApiService {
         'enable_problem': enableProblem,
         'enable_vote': enableVote,
         'enable_prioritise': enablePrioritise,
+        'guests_enabled': guestsEnabled,
         'interstitial_problem': interstitialProblem,
         'interstitial_brainstorm': interstitialBrainstorm,
         'interstitial_group': interstitialGroup,

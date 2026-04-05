@@ -43,6 +43,7 @@ type GroupResponse struct {
 	MemberCount int                   `json:"member_count"`
 	IsMember    bool                  `json:"is_member"`
 	IsPrivate   bool                  `json:"is_private"`
+	Plan        string                `json:"plan"`
 	JoinCode    string                `json:"join_code,omitempty"`
 	Members     []models.UserResponse `json:"members,omitempty"`
 }
@@ -62,6 +63,10 @@ func groupToResponse(g models.Group, userID string, includeMembers bool) GroupRe
 	if g.OwnerID == userID {
 		joinCode = g.JoinCode
 	}
+	plan := g.Plan
+	if plan == "" {
+		plan = "free"
+	}
 	return GroupResponse{
 		ID:          g.ID,
 		Slug:        g.Slug,
@@ -71,6 +76,7 @@ func groupToResponse(g models.Group, userID string, includeMembers bool) GroupRe
 		MemberCount: len(g.Members),
 		IsMember:    isMember,
 		IsPrivate:   g.IsPrivate,
+		Plan:        plan,
 		JoinCode:    joinCode,
 		Members:     members,
 	}
@@ -142,6 +148,7 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 		MemberCount: 1,
 		IsMember:    true,
 		IsPrivate:   group.IsPrivate,
+		Plan:        "free",
 		JoinCode:    group.JoinCode,
 	})
 }
@@ -283,6 +290,10 @@ func (h *GroupHandler) GetMyGroups(c *gin.Context) {
 		if g.OwnerID == userID {
 			joinCode = g.JoinCode
 		}
+		plan := g.Plan
+		if plan == "" {
+			plan = "free"
+		}
 		response[i] = GroupResponse{
 			ID:          g.ID,
 			Slug:        g.Slug,
@@ -291,9 +302,48 @@ func (h *GroupHandler) GetMyGroups(c *gin.Context) {
 			OwnerID:     g.OwnerID,
 			IsMember:    true,
 			IsPrivate:   g.IsPrivate,
+			Plan:        plan,
 			JoinCode:    joinCode,
 		}
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+func (h *GroupHandler) UpdateGroupPlan(c *gin.Context) {
+	userID := c.MustGet("userID").(string)
+	slug := c.Param("id")
+
+	var group models.Group
+	if err := h.db.Where("slug = ?", slug).First(&group).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
+		return
+	}
+
+	if group.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the group owner can change the plan"})
+		return
+	}
+
+	var req struct {
+		Plan string `json:"plan" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	valid := map[string]bool{"free": true, "standard": true, "pro": true}
+	if !valid[req.Plan] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan"})
+		return
+	}
+
+	if err := h.db.Model(&group).Update("plan", req.Plan).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update plan"})
+		return
+	}
+
+	h.db.Preload("Members").Where("slug = ?", slug).First(&group)
+	c.JSON(http.StatusOK, groupToResponse(group, userID, true))
 }

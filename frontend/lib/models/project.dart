@@ -12,6 +12,7 @@ class Project {
   final bool enableProblem;
   final bool enableVote;
   final bool enablePrioritise;
+  final bool guestsEnabled;
   final String problemStatement;
   final int activeUsers;
   final String interstitialProblem;
@@ -34,6 +35,7 @@ class Project {
     this.enableProblem = true,
     this.enableVote = true,
     this.enablePrioritise = true,
+    this.guestsEnabled = false,
     this.problemStatement = '',
     this.activeUsers = 0,
     this.interstitialProblem = '',
@@ -73,6 +75,7 @@ class Project {
         enableProblem: json['enable_problem'] as bool? ?? true,
         enableVote: json['enable_vote'] as bool? ?? true,
         enablePrioritise: json['enable_prioritise'] as bool? ?? true,
+        guestsEnabled: json['guests_enabled'] as bool? ?? false,
         problemStatement: json['problem_statement'] as String? ?? '',
         activeUsers: json['active_users'] as int? ?? 0,
         interstitialProblem: json['interstitial_problem'] as String? ?? '',

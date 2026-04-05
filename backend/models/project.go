@@ -25,6 +25,8 @@ type Project struct {
 	EnablePrioritise   bool   `json:"enable_prioritise"   gorm:"not null;default:true"`
 	ProblemStatement   string `json:"problem_statement"   gorm:"type:text;not null;default:''"`
 
+	GuestsEnabled bool   `json:"guests_enabled" gorm:"not null;default:false"`
+
 	// Custom interstitial descriptions (empty = use app default)
 	InterstitialProblem    string `json:"interstitial_problem"    gorm:"type:text;not null;default:''"`
 	InterstitialBrainstorm string `json:"interstitial_brainstorm" gorm:"type:text;not null;default:''"`

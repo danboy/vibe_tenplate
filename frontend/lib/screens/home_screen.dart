@@ -299,9 +299,12 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (context, i) {
               final g = groups[i];
+              final myId = context.read<AuthProvider>().user!.id;
               return _GroupCard(
                 group: g,
+                isOwner: g.ownerId == myId,
                 onTap: () => context.go('/groups/${g.slug}'),
+                onEdit: () => context.go('/groups/${g.slug}/members'),
               );
             },
           ),
@@ -441,9 +444,16 @@ class _DiscoverCard extends StatelessWidget {
 
 class _GroupCard extends StatelessWidget {
   final Group group;
+  final bool isOwner;
   final VoidCallback onTap;
+  final VoidCallback onEdit;
 
-  const _GroupCard({required this.group, required this.onTap});
+  const _GroupCard({
+    required this.group,
+    required this.isOwner,
+    required this.onTap,
+    required this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -503,7 +513,14 @@ class _GroupCard extends StatelessWidget {
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   visualDensity: VisualDensity.compact,
                 ),
-              const Icon(Icons.chevron_right, color: Colors.grey),
+              if (isOwner)
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  tooltip: 'Edit group',
+                  onPressed: onEdit,
+                )
+              else
+                const Icon(Icons.chevron_right, color: Colors.grey),
             ],
           ),
         ),

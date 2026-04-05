@@ -26,6 +26,7 @@ type CreateProjectRequest struct {
 	EnableProblem    bool   `json:"enable_problem"`
 	EnableVote       bool   `json:"enable_vote"`
 	EnablePrioritise bool   `json:"enable_prioritise"`
+	GuestsEnabled    bool   `json:"guests_enabled"`
 
 	InterstitialProblem    string `json:"interstitial_problem"`
 	InterstitialBrainstorm string `json:"interstitial_brainstorm"`
@@ -113,6 +114,30 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		return
 	}
 
+	groupPlan := group.Plan
+	if groupPlan == "" {
+		groupPlan = "free"
+	}
+
+	if groupPlan == "free" {
+		var count int64
+		h.db.Model(&models.Project{}).Where("group_id = ?", group.ID).Count(&count)
+		if count >= 3 {
+			c.JSON(http.StatusForbidden, gin.H{"error": "project limit reached for this group's plan"})
+			return
+		}
+		// Free groups cannot customize projects or enable guests
+		req.EnableProblem = true
+		req.EnableVote = true
+		req.EnablePrioritise = true
+		req.GuestsEnabled = false
+		req.InterstitialProblem = ""
+		req.InterstitialBrainstorm = ""
+		req.InterstitialGroup = ""
+		req.InterstitialVote = ""
+		req.InterstitialPrioritise = ""
+	}
+
 	slug := utils.UniqueSlug(utils.Slugify(req.Name), func(s string) bool {
 		var count int64
 		h.db.Model(&models.Project{}).Where("group_id = ? AND slug = ?", group.ID, s).Count(&count)
@@ -129,6 +154,7 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		EnableProblem:          req.EnableProblem,
 		EnableVote:             req.EnableVote,
 		EnablePrioritise:       req.EnablePrioritise,
+		GuestsEnabled:          req.GuestsEnabled,
 		InterstitialProblem:    req.InterstitialProblem,
 		InterstitialBrainstorm: req.InterstitialBrainstorm,
 		InterstitialGroup:      req.InterstitialGroup,
@@ -146,6 +172,7 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		"enable_problem":          req.EnableProblem,
 		"enable_vote":             req.EnableVote,
 		"enable_prioritise":       req.EnablePrioritise,
+		"guests_enabled":          req.GuestsEnabled,
 		"interstitial_problem":    req.InterstitialProblem,
 		"interstitial_brainstorm": req.InterstitialBrainstorm,
 		"interstitial_group":      req.InterstitialGroup,
@@ -237,6 +264,7 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		EnableProblem    bool   `json:"enable_problem"`
 		EnableVote       bool   `json:"enable_vote"`
 		EnablePrioritise bool   `json:"enable_prioritise"`
+		GuestsEnabled    bool   `json:"guests_enabled"`
 
 		InterstitialProblem    string `json:"interstitial_problem"`
 		InterstitialBrainstorm string `json:"interstitial_brainstorm"`
@@ -249,6 +277,18 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		return
 	}
 
+	if group.Plan == "" || group.Plan == "free" {
+		req.EnableProblem = true
+		req.EnableVote = true
+		req.EnablePrioritise = true
+		req.GuestsEnabled = false
+		req.InterstitialProblem = ""
+		req.InterstitialBrainstorm = ""
+		req.InterstitialGroup = ""
+		req.InterstitialVote = ""
+		req.InterstitialPrioritise = ""
+	}
+
 	h.db.Model(&project).UpdateColumns(map[string]any{
 		"name":                    req.Name,
 		"description":             req.Description,
@@ -256,6 +296,7 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		"enable_problem":          req.EnableProblem,
 		"enable_vote":             req.EnableVote,
 		"enable_prioritise":       req.EnablePrioritise,
+		"guests_enabled":          req.GuestsEnabled,
 		"interstitial_problem":    req.InterstitialProblem,
 		"interstitial_brainstorm": req.InterstitialBrainstorm,
 		"interstitial_group":      req.InterstitialGroup,

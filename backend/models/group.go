@@ -17,6 +17,7 @@ type Group struct {
 	Description string         `json:"description"`
 	OwnerID     string         `json:"owner_id"    gorm:"type:text"`
 	IsPrivate   bool           `json:"is_private"  gorm:"default:false"`
+	Plan        string         `json:"plan"        gorm:"type:text;not null;default:'free'"`
 	JoinCode    string         `json:"join_code"   gorm:"type:text"`
 	Members     []User         `json:"members,omitempty" gorm:"many2many:user_groups;"`
 }

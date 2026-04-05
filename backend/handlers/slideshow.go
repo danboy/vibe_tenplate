@@ -56,26 +56,37 @@ func (h *SlideshowHandler) Connect(c *gin.Context) {
 		return
 	}
 
-	// Verify the user is a member of the project's group.
-	var group models.Group
-	if err := h.db.Preload("Members").Where("id = ?", project.GroupID).First(&group).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
-		return
-	}
-	isMember := false
-	for _, m := range group.Members {
-		if m.ID == claims.UserID {
-			isMember = true
-			break
-		}
-	}
-	if !isMember {
-		c.JSON(http.StatusForbidden, gin.H{"error": "not a member"})
-		return
-	}
+	var username string
 
-	var user models.User
-	h.db.First(&user, claims.UserID)
+	if claims.IsGuest {
+		// Guest tokens skip membership checks but require guests to be enabled.
+		if !project.GuestsEnabled {
+			c.JSON(http.StatusForbidden, gin.H{"error": "guest access is not enabled for this project"})
+			return
+		}
+		username = claims.DisplayName
+	} else {
+		// Verify the user is a member of the project's group.
+		var group models.Group
+		if err := h.db.Preload("Members").Where("id = ?", project.GroupID).First(&group).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
+			return
+		}
+		isMember := false
+		for _, m := range group.Members {
+			if m.ID == claims.UserID {
+				isMember = true
+				break
+			}
+		}
+		if !isMember {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not a member"})
+			return
+		}
+		var user models.User
+		h.db.First(&user, claims.UserID)
+		username = user.Username
+	}
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -83,7 +94,7 @@ func (h *SlideshowHandler) Connect(c *gin.Context) {
 	}
 
 	hub := ws.GetHub(projectID, h.db)
-	client := ws.NewClient(hub, conn, claims.UserID, user.Username)
+	client := ws.NewClient(hub, conn, claims.UserID, username)
 
 	hub.Register(client)
 

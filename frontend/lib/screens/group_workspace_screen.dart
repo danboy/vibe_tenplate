@@ -68,6 +68,8 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     var enableProblem = true;
     var enableVote = true;
     var enablePrioritise = true;
+    var guestsEnabled = false;
+    final canCustomize = group.plan != 'free';
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -109,45 +111,78 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                     ),
                     maxLines: 3,
                   ),
-                  const SizedBox(height: 16),
-                  Text('Optional slides',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[600])),
-                  const SizedBox(height: 4),
-                  CheckboxListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Problem Statement'),
-                    subtitle: const Text('Collaborative problem statement editor'),
-                    value: enableProblem,
-                    onChanged: (v) => setLocal(() => enableProblem = v ?? true),
-                  ),
-                  CheckboxListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Vote'),
-                    subtitle: const Text('Team members place stars on notes'),
-                    value: enableVote,
-                    onChanged: (v) => setLocal(() => enableVote = v ?? true),
-                  ),
-                  CheckboxListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Prioritise'),
-                    subtitle: const Text('Cost vs value matrix'),
-                    value: enablePrioritise,
-                    onChanged: (v) =>
-                        setLocal(() => enablePrioritise = v ?? true),
-                  ),
-                  const SizedBox(height: 8),
-                  _InterstitialSection(
-                    controllers: iCtrl,
-                    enableProblem: enableProblem,
-                    enableVote: enableVote,
-                    enablePrioritise: enablePrioritise,
-                  ),
+                  if (canCustomize) ...[
+                    const SizedBox(height: 16),
+                    Text('Optional slides',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[600])),
+                    const SizedBox(height: 4),
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Problem Statement'),
+                      subtitle: const Text('Collaborative problem statement editor'),
+                      value: enableProblem,
+                      onChanged: (v) => setLocal(() => enableProblem = v ?? true),
+                    ),
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Vote'),
+                      subtitle: const Text('Team members place stars on notes'),
+                      value: enableVote,
+                      onChanged: (v) => setLocal(() => enableVote = v ?? true),
+                    ),
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Prioritise'),
+                      subtitle: const Text('Cost vs value matrix'),
+                      value: enablePrioritise,
+                      onChanged: (v) =>
+                          setLocal(() => enablePrioritise = v ?? true),
+                    ),
+                    const Divider(height: 20),
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Allow guests'),
+                      subtitle: const Text('Anyone with the link can join without logging in'),
+                      value: guestsEnabled,
+                      onChanged: (v) => setLocal(() => guestsEnabled = v ?? false),
+                    ),
+                    const SizedBox(height: 8),
+                    _InterstitialSection(
+                      controllers: iCtrl,
+                      enableProblem: enableProblem,
+                      enableVote: enableVote,
+                      enablePrioritise: enablePrioritise,
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.lock_outline, size: 16, color: Colors.amber.shade700),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Upgrade to Standard or Pro to customise activity settings.',
+                              style: TextStyle(fontSize: 12, color: Colors.amber.shade800),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -182,6 +217,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
         enableProblem: enableProblem,
         enableVote: enableVote,
         enablePrioritise: enablePrioritise,
+        guestsEnabled: guestsEnabled,
         interstitialProblem: iCtrl.problem.text.trim(),
         interstitialBrainstorm: iCtrl.brainstorm.text.trim(),
         interstitialGroup: iCtrl.group.text.trim(),
@@ -212,6 +248,11 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     var enableProblem = project.enableProblem;
     var enableVote = project.enableVote;
     var enablePrioritise = project.enablePrioritise;
+    var guestsEnabled = project.guestsEnabled;
+    // Fetch group to get current plan
+    final group = await context.read<AuthProvider>().api.getGroup(widget.groupSlug);
+    if (!mounted) return;
+    final canCustomize = group.plan != 'free';
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -253,45 +294,78 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                     ),
                     maxLines: 3,
                   ),
-                  const SizedBox(height: 16),
-                  Text('Optional slides',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[600])),
-                  const SizedBox(height: 4),
-                  CheckboxListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Problem Statement'),
-                    subtitle: const Text('Collaborative problem statement editor'),
-                    value: enableProblem,
-                    onChanged: (v) => setLocal(() => enableProblem = v ?? true),
-                  ),
-                  CheckboxListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Vote'),
-                    subtitle: const Text('Team members place stars on notes'),
-                    value: enableVote,
-                    onChanged: (v) => setLocal(() => enableVote = v ?? true),
-                  ),
-                  CheckboxListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Prioritise'),
-                    subtitle: const Text('Cost vs value matrix'),
-                    value: enablePrioritise,
-                    onChanged: (v) =>
-                        setLocal(() => enablePrioritise = v ?? true),
-                  ),
-                  const SizedBox(height: 8),
-                  _InterstitialSection(
-                    controllers: iCtrl,
-                    enableProblem: enableProblem,
-                    enableVote: enableVote,
-                    enablePrioritise: enablePrioritise,
-                  ),
+                  if (canCustomize) ...[
+                    const SizedBox(height: 16),
+                    Text('Optional slides',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[600])),
+                    const SizedBox(height: 4),
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Problem Statement'),
+                      subtitle: const Text('Collaborative problem statement editor'),
+                      value: enableProblem,
+                      onChanged: (v) => setLocal(() => enableProblem = v ?? true),
+                    ),
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Vote'),
+                      subtitle: const Text('Team members place stars on notes'),
+                      value: enableVote,
+                      onChanged: (v) => setLocal(() => enableVote = v ?? true),
+                    ),
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Prioritise'),
+                      subtitle: const Text('Cost vs value matrix'),
+                      value: enablePrioritise,
+                      onChanged: (v) =>
+                          setLocal(() => enablePrioritise = v ?? true),
+                    ),
+                    const Divider(height: 20),
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Allow guests'),
+                      subtitle: const Text('Anyone with the link can join without logging in'),
+                      value: guestsEnabled,
+                      onChanged: (v) => setLocal(() => guestsEnabled = v ?? false),
+                    ),
+                    const SizedBox(height: 8),
+                    _InterstitialSection(
+                      controllers: iCtrl,
+                      enableProblem: enableProblem,
+                      enableVote: enableVote,
+                      enablePrioritise: enablePrioritise,
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.lock_outline, size: 16, color: Colors.amber.shade700),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Upgrade to Standard or Pro to customise activity settings.',
+                              style: TextStyle(fontSize: 12, color: Colors.amber.shade800),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -327,6 +401,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
         enableProblem: enableProblem,
         enableVote: enableVote,
         enablePrioritise: enablePrioritise,
+        guestsEnabled: guestsEnabled,
         interstitialProblem: iCtrl.problem.text.trim(),
         interstitialBrainstorm: iCtrl.brainstorm.text.trim(),
         interstitialGroup: iCtrl.group.text.trim(),
