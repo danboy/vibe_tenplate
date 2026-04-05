@@ -174,7 +174,12 @@ func (h *BillingHandler) HandleWebhook(c *gin.Context) {
 	}
 
 	sig := c.GetHeader("Stripe-Signature")
-	event, err := webhook.ConstructEvent(body, sig, os.Getenv("STRIPE_WEBHOOK_SECRET"))
+	secret := os.Getenv("STRIPE_WEBHOOK_SECRET")
+
+	log.Printf("stripe webhook: body=%d bytes, sig_present=%v, secret_prefix=%.12s",
+		len(body), sig != "", secret)
+
+	event, err := webhook.ConstructEvent(body, sig, secret)
 	if err != nil {
 		log.Printf("stripe webhook signature error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid webhook signature"})
