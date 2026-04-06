@@ -1,0 +1,134 @@
+---
+const plans = [
+  {
+    name: 'Free',
+    price: '$0',
+    period: 'free',
+    description: 'Perfect for individuals and small teams getting started.',
+    cta: 'Get started free',
+    ctaHref: '/register',
+    highlighted: false,
+    features: [
+      'Up to 3 projects',
+      '1 group workspace',
+      'Unlimited sticky notes',
+      'Real-time collaboration',
+      'Presentation mode',
+    ],
+  },
+  {
+    name: 'Standard',
+    price: '$4.99',
+    period: 'per month',
+    description: 'For growing teams who need more space and control.',
+    cta: 'Start free trial',
+    ctaHref: '/register?plan=standard',
+    highlighted: true,
+    features: [
+      'Unlimited projects',
+      'Up to 5 group workspaces',
+      'Private groups with join codes',
+      'Guest access',
+      'Priority support',
+    ],
+  },
+  {
+    name: 'Pro',
+    price: '$9.99',
+    period: 'per month',
+    description: 'Unlimited everything for organisations that run on 10plate.',
+    cta: 'Start free trial',
+    ctaHref: '/register?plan=pro',
+    highlighted: false,
+    features: [
+      'Everything in Standard',
+      'Unlimited group workspaces',
+      'Advanced permissions',
+      'SSO / enterprise auth (coming soon)',
+      'Dedicated support',
+    ],
+  },
+];
+---
+
+<section id="pricing" class="py-24 px-6 bg-white dark:bg-brand-dark-surface transition-colors duration-200">
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-16">
+      <h2 class="text-3xl md:text-4xl font-extrabold text-brand-text dark:text-brand-dark-text mb-4">
+        Simple, honest pricing
+      </h2>
+      <p class="text-lg text-brand-text-muted dark:text-brand-dark-text-muted max-w-xl mx-auto">
+        Start free. Upgrade when your team grows. No hidden fees.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-8 items-start">
+      {
+        plans.map((plan) => (
+          <div
+            class={`rounded-2xl p-8 border ${
+              plan.highlighted
+                ? 'bg-brand-primary border-brand-primary shadow-2xl shadow-brand-primary/20 text-white'
+                : 'bg-white dark:bg-brand-dark-surface-hi border-brand-border dark:border-brand-dark-border'
+            }`}
+          >
+            <div class="mb-6">
+              <p
+                class={`text-sm font-semibold mb-1 ${plan.highlighted ? 'text-brand-primary-container' : 'text-brand-primary dark:text-brand-dark-primary'}`}
+              >
+                {plan.name}
+              </p>
+              <div class="flex items-end gap-1 mb-2">
+                <span
+                  class={`text-4xl font-extrabold ${plan.highlighted ? 'text-white' : 'text-brand-text dark:text-brand-dark-text'}`}
+                >
+                  {plan.price}
+                </span>
+                <span
+                  class={`text-sm pb-1 ${plan.highlighted ? 'text-brand-primary-container' : 'text-brand-text-muted dark:text-brand-dark-text-muted'}`}
+                >
+                  /{plan.period}
+                </span>
+              </div>
+              <p class={`text-sm leading-relaxed ${plan.highlighted ? 'text-brand-primary-container' : 'text-brand-text-muted dark:text-brand-dark-text-muted'}`}>
+                {plan.description}
+              </p>
+            </div>
+
+            <a
+              href={plan.ctaHref}
+              class={`block w-full text-center text-sm font-semibold py-3 rounded-xl mb-8 transition-colors ${
+                plan.highlighted
+                  ? 'bg-white text-brand-primary hover:bg-brand-bg'
+                  : 'bg-brand-primary text-white hover:bg-brand-primary-dark'
+              }`}
+            >
+              {plan.cta}
+            </a>
+
+            <ul class="space-y-3">
+              {plan.features.map((feature) => (
+                <li class="flex items-start gap-2 text-sm">
+                  <svg
+                    class={`w-4 h-4 mt-0.5 flex-shrink-0 ${plan.highlighted ? 'text-brand-primary-container' : 'text-brand-primary dark:text-brand-dark-primary'}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2.5"
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                  <span class={plan.highlighted ? 'text-brand-primary-container' : 'text-brand-text-muted dark:text-brand-dark-text-muted'}>{feature}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

@@ -1,0 +1,65 @@
+---
+const features = [
+  {
+    icon: '🗂️',
+    title: 'Infinite canvas',
+    description:
+      'Drop ideas onto a free-form canvas with no limits. Drag, rearrange, and organise at any scale without the constraints of a slide deck or spreadsheet.',
+  },
+  {
+    icon: '⚡',
+    title: 'Real-time collaboration',
+    description:
+      'Every note, move, and grouping appears instantly for all teammates. No refreshing, no merge conflicts — just live shared thinking.',
+  },
+  {
+    icon: '🧩',
+    title: 'Smart grouping',
+    description:
+      'Drag notes onto each other to cluster related ideas. Groups emerge naturally from the work, not from a rigid folder structure imposed upfront.',
+  },
+  {
+    icon: '📽️',
+    title: 'Built-in presentation mode',
+    description:
+      'Switch from brainstorm to presentation with one click. Walk stakeholders through your organised plan without leaving the tool.',
+  },
+  {
+    icon: '👥',
+    title: 'Team workspaces',
+    description:
+      'Organise projects inside groups — private for your core team or public for open collaboration. Invite members with a join code.',
+  },
+  {
+    icon: '🔒',
+    title: 'Secure by default',
+    description:
+      'JWT-authenticated sessions, private groups, and role-based access mean your plans stay where you want them.',
+  },
+];
+---
+
+<section id="features" class="py-24 px-6 bg-white dark:bg-brand-dark-surface transition-colors duration-200">
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-16">
+      <h2 class="text-3xl md:text-4xl font-extrabold text-brand-text dark:text-brand-dark-text mb-4">
+        Everything your team needs to plan well
+      </h2>
+      <p class="text-lg text-brand-text-muted dark:text-brand-dark-text-muted max-w-xl mx-auto">
+        From the first scattered idea to a polished, shareable plan — 10plate has you covered.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+      {
+        features.map((f) => (
+          <div class="bg-brand-bg dark:bg-brand-dark-surface-hi rounded-2xl p-6 hover:shadow-md transition-shadow border border-brand-border dark:border-brand-dark-border">
+            <div class="text-3xl mb-4">{f.icon}</div>
+            <h3 class="text-lg font-bold text-brand-text dark:text-brand-dark-text mb-2">{f.title}</h3>
+            <p class="text-brand-text-muted dark:text-brand-dark-text-muted text-sm leading-relaxed">{f.description}</p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

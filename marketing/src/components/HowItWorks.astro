@@ -1,0 +1,66 @@
+---
+const steps = [
+  {
+    number: '01',
+    title: 'Create a workspace',
+    description:
+      'Set up a group for your team — product, engineering, design, or the whole company. Keep it private or open it up for broader input.',
+  },
+  {
+    number: '02',
+    title: 'Start a project',
+    description:
+      'Every sprint, quarter, or initiative gets its own project. Open the canvas and start adding sticky notes — one idea per card.',
+  },
+  {
+    number: '03',
+    title: 'Brainstorm together',
+    description:
+      'Teammates join and drop their ideas onto the shared canvas in real time. No waiting for your turn — everyone contributes at once.',
+  },
+  {
+    number: '04',
+    title: 'Group and prioritise',
+    description:
+      'Drag related notes onto each other to cluster them into themes. Rearrange until the structure reflects your actual priorities.',
+  },
+  {
+    number: '05',
+    title: 'Present your plan',
+    description:
+      'Flip into presentation mode and walk through your organised canvas with stakeholders. The plan is already there — no extra prep needed.',
+  },
+];
+---
+
+<section id="how-it-works" class="py-24 px-6 bg-brand-bg dark:bg-brand-dark-bg transition-colors duration-200">
+  <div class="max-w-4xl mx-auto">
+    <div class="text-center mb-16">
+      <h2 class="text-3xl md:text-4xl font-extrabold text-brand-text dark:text-brand-dark-text mb-4">
+        From chaos to clarity in minutes
+      </h2>
+      <p class="text-lg text-brand-text-muted dark:text-brand-dark-text-muted max-w-xl mx-auto">
+        10plate fits the way teams actually think — messy at first, structured by the end.
+      </p>
+    </div>
+
+    <div class="space-y-8">
+      {
+        steps.map((step, i) => (
+          <div class="flex gap-6 items-start">
+            <div class="flex-shrink-0 w-14 h-14 rounded-2xl bg-brand-primary dark:bg-brand-dark-primary flex items-center justify-center">
+              <span class="text-white dark:text-brand-dark-bg font-bold text-sm">{step.number}</span>
+            </div>
+            <div class="flex-1 pt-2">
+              <h3 class="text-lg font-bold text-brand-text dark:text-brand-dark-text mb-1">{step.title}</h3>
+              <p class="text-brand-text-muted dark:text-brand-dark-text-muted leading-relaxed">{step.description}</p>
+            </div>
+            {i < steps.length - 1 && (
+              <div class="absolute ml-7 mt-14 w-0.5 h-8 bg-brand-primary/20 dark:bg-brand-dark-primary/20" />
+            )}
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>
