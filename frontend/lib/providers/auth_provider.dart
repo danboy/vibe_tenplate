@@ -7,11 +7,15 @@ class AuthProvider extends ChangeNotifier {
   String? _token;
   User? _user;
   bool _isLoading = true;
+  String? _pendingPlan;
 
   bool get isAuthenticated => _token != null && _user != null;
   bool get isLoading => _isLoading;
   User? get user => _user;
   String? get token => _token;
+  String? get pendingPlan => _pendingPlan;
+
+  void clearPendingPlan() => _pendingPlan = null;
 
   ApiService get api => ApiService(token: _token);
 
@@ -34,12 +38,14 @@ class AuthProvider extends ChangeNotifier {
     required String username,
     required String email,
     required String password,
+    String? plan,
   }) async {
     final result = await ApiService().register(
       username: username,
       email: email,
       password: password,
     );
+    if (plan != null && plan != 'free') _pendingPlan = plan;
     await _saveSession(result.token, result.user);
   }
 

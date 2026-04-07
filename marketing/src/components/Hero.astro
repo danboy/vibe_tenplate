@@ -1,14 +1,11 @@
 ---
+import { links } from '../config';
 ---
 
 <section class="pt-32 pb-20 px-6 bg-gradient-to-b from-brand-bg to-white dark:from-brand-dark-surface dark:to-brand-dark-bg transition-colors duration-200">
   <div class="max-w-4xl mx-auto text-center">
-    <img src="/logo.svg" alt="10plate" class="w-40 h-40 mx-auto mb-6" />
-
-    <div class="inline-flex items-center gap-2 bg-brand-primary/10 text-brand-primary dark:text-brand-dark-primary text-sm font-semibold px-4 py-1.5 rounded-full mb-6">
-      <span class="w-2 h-2 bg-brand-primary dark:bg-brand-dark-primary rounded-full animate-pulse"></span>
-      Built for teams who move fast
-    </div>
+    <img src="/logo.svg" alt="10plate" class="w-40 h-40 mx-auto mb-0" />
+    <p class="text-5xl md:text-6xl font-extrabold text-brand-text dark:text-brand-dark-text mb-12 -mt-2">10Plate</p>
 
     <h1 class="text-5xl md:text-6xl font-extrabold text-brand-text dark:text-brand-dark-text leading-tight mb-6">
       Plan together.<br />
@@ -22,7 +19,7 @@
 
     <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
       <a
-        href="/register"
+        href={links.register}
         class="w-full sm:w-auto text-base font-semibold bg-brand-primary text-white px-8 py-3.5 rounded-xl hover:bg-brand-primary-dark transition-colors shadow-lg shadow-brand-primary/25"
       >
         Start for free
@@ -35,7 +32,7 @@
       </a>
     </div>
 
-    <p class="mt-4 text-sm text-brand-text-muted/60 dark:text-brand-dark-text-muted/60">No credit card required &middot; Free forever plan</p>
+    <p class="mt-4 text-sm text-brand-text-muted/60 dark:text-brand-dark-text-muted/60">No credit card required</p>
   </div>
 
   <!-- Canvas mockup -->

@@ -34,12 +34,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _error = null;
     });
     try {
+      final plan = Uri.base.queryParameters['plan'];
       await context.read<AuthProvider>().register(
             username: _usernameController.text.trim(),
             email: _emailController.text.trim(),
             password: _passwordController.text,
+            plan: plan,
           );
-      // Router's refreshListenable will redirect to /home automatically.
+      // Router's refreshListenable will redirect automatically.
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {

@@ -8,6 +8,7 @@ import 'screens/register_screen.dart';
 import 'screens/group_workspace_screen.dart';
 import 'screens/group_detail_screen.dart';
 import 'screens/join_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'screens/project_slideshow_screen.dart';
 
 GoRouter createRouter(AuthProvider auth) => GoRouter(
@@ -32,6 +33,7 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
           if (redirectTo != null && redirectTo.startsWith('/')) {
             return redirectTo;
           }
+          if (auth.pendingPlan != null) return '/onboarding';
           return '/groups';
         }
 
@@ -49,6 +51,12 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
           builder: (_, state) => JoinScreen(
             code: state.uri.queryParameters['code'] ?? '',
           ),
+        ),
+
+        // Onboarding — full-screen, outside the shell
+        GoRoute(
+          path: '/onboarding',
+          builder: (_, __) => const OnboardingScreen(),
         ),
 
         // Slideshow is full-screen — outside the shell

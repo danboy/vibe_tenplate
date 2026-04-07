@@ -1,4 +1,5 @@
 ---
+import { links } from '../config';
 ---
 
 <footer class="bg-brand-dark-surface dark:bg-brand-dark-bg border-t border-brand-dark-border-sub text-brand-dark-text-muted py-12 px-6 transition-colors duration-200">
@@ -26,8 +27,8 @@
         <div>
           <h4 class="text-brand-dark-text font-semibold mb-3">Account</h4>
           <ul class="space-y-2">
-            <li><a href="/login" class="hover:text-brand-dark-primary transition-colors">Sign in</a></li>
-            <li><a href="/register" class="hover:text-brand-dark-primary transition-colors">Register</a></li>
+            <li><a href={links.login} class="hover:text-brand-dark-primary transition-colors">Sign in</a></li>
+            <li><a href={links.register} class="hover:text-brand-dark-primary transition-colors">Register</a></li>
           </ul>
         </div>
         <div>

@@ -1,4 +1,6 @@
 ---
+import { links } from '../config';
+
 const plans = [
   {
     name: 'Free',
@@ -6,7 +8,7 @@ const plans = [
     period: 'free',
     description: 'Perfect for individuals and small teams getting started.',
     cta: 'Get started free',
-    ctaHref: '/register',
+    ctaHref: links.register,
     highlighted: false,
     features: [
       'Up to 3 projects',
@@ -22,7 +24,7 @@ const plans = [
     period: 'per month',
     description: 'For growing teams who need more space and control.',
     cta: 'Start free trial',
-    ctaHref: '/register?plan=standard',
+    ctaHref: `${links.register}?plan=standard`,
     highlighted: true,
     features: [
       'Unlimited projects',
@@ -38,7 +40,7 @@ const plans = [
     period: 'per month',
     description: 'Unlimited everything for organisations that run on 10plate.',
     cta: 'Start free trial',
-    ctaHref: '/register?plan=pro',
+    ctaHref: `${links.register}?plan=pro`,
     highlighted: false,
     features: [
       'Everything in Standard',
