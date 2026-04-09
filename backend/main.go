@@ -38,6 +38,7 @@ func main() {
 
 	authHandler := handlers.NewAuthHandler(db)
 	groupHandler := handlers.NewGroupHandler(db)
+	teamHandler := handlers.NewTeamHandler(db)
 	projectHandler := handlers.NewProjectHandler(db)
 	slideshowHandler := handlers.NewSlideshowHandler(db)
 	guestHandler := handlers.NewGuestHandler(db)
@@ -69,21 +70,33 @@ func main() {
 		{
 			protected.GET("/users/me", authHandler.GetMe)
 			protected.GET("/users/me/groups", groupHandler.GetMyGroups)
+			protected.GET("/users/me/teams", teamHandler.ListMyTeams)
+
+			// Teams
+			protected.GET("/teams", teamHandler.ListTeams)
+			protected.POST("/teams", teamHandler.CreateTeam)
+			protected.POST("/teams/join-by-code", teamHandler.JoinByCode)
+			protected.GET("/teams/:id", teamHandler.GetTeam)
+			protected.POST("/teams/:id/join", teamHandler.JoinTeam)
+			protected.POST("/teams/:id/leave", teamHandler.LeaveTeam)
+			protected.GET("/teams/:id/groups", groupHandler.ListTeamGroups)
+			protected.POST("/teams/:id/checkout", teamHandler.CreateCheckoutSession)
+			protected.POST("/teams/:id/billing-portal", teamHandler.CreatePortalSession)
+
+			// Groups
 			protected.GET("/groups", groupHandler.ListGroups)
 			protected.POST("/groups", groupHandler.CreateGroup)
-			protected.POST("/groups/join-by-code", groupHandler.JoinByCode)
 			protected.GET("/groups/:id", groupHandler.GetGroup)
 			protected.POST("/groups/:id/join", groupHandler.JoinGroup)
 			protected.POST("/groups/:id/leave", groupHandler.LeaveGroup)
+
+			// Projects
 			protected.GET("/groups/:id/projects", projectHandler.ListProjects)
 			protected.POST("/groups/:id/projects", projectHandler.CreateProject)
 			protected.GET("/groups/:id/projects/:pid", projectHandler.GetProject)
 			protected.PATCH("/groups/:id/projects/:pid", projectHandler.UpdateProject)
 			protected.DELETE("/groups/:id/projects/:pid", projectHandler.DeleteProject)
 			protected.PUT("/groups/:id/projects/:pid/presenter", projectHandler.SetPresenter)
-			protected.PATCH("/groups/:id/plan", groupHandler.UpdateGroupPlan)
-			protected.POST("/groups/:id/checkout", billingHandler.CreateCheckoutSession)
-			protected.POST("/groups/:id/billing-portal", billingHandler.CreatePortalSession)
 		}
 	}
 

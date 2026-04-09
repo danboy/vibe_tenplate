@@ -39,22 +39,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final plan = auth.pendingPlan!;
 
     try {
-      final group = await auth.api.createGroup(
+      final team = await auth.api.createTeam(
         name: _nameController.text.trim(),
-        description: '',
       );
 
       final successUrl = Uri.base
           .replace(
-            path: '/groups/${group.slug}/members',
+            path: '/teams/${team.slug}/settings',
             queryParameters: {'billing': 'success'},
           )
           .toString();
       final cancelUrl =
-          Uri.base.replace(path: '/groups', queryParameters: {}).toString();
+          Uri.base.replace(path: '/teams', queryParameters: {}).toString();
 
-      final checkoutUrl = await auth.api.createCheckoutSession(
-        groupSlug: group.slug,
+      final checkoutUrl = await auth.api.createTeamCheckoutSession(
+        teamSlug: team.slug,
         plan: plan,
         successUrl: successUrl,
         cancelUrl: cancelUrl,
@@ -77,9 +76,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final auth = context.watch<AuthProvider>();
     final plan = auth.pendingPlan;
 
-    // Guard: if no pending plan, go to groups
     if (plan == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => context.go('/groups'));
+      WidgetsBinding.instance.addPostFrameCallback((_) => context.go('/teams'));
       return const Scaffold(body: SizedBox.shrink());
     }
 
@@ -98,7 +96,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'Set up your workspace',
+                      'Set up your team',
                       style: theme.textTheme.headlineSmall
                           ?.copyWith(fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
@@ -158,12 +156,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       textInputAction: TextInputAction.done,
                       onFieldSubmitted: (_) => _submit(),
                       decoration: const InputDecoration(
-                        labelText: 'Workspace name',
+                        labelText: 'Team name',
                         hintText: 'e.g. Acme Product Team',
                         prefixIcon: Icon(Icons.groups_outlined),
                       ),
                       validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Please enter a workspace name'
+                          ? 'Please enter a team name'
                           : null,
                     ),
                     const SizedBox(height: 24),
@@ -187,7 +185,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           ? null
                           : () {
                               auth.clearPendingPlan();
-                              context.go('/groups');
+                              context.go('/teams');
                             },
                       child: Text(
                         'Skip for now',

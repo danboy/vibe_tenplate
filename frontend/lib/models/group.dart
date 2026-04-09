@@ -6,9 +6,7 @@ class Group {
   final String ownerId;
   final int memberCount;
   final bool isMember;
-  final bool isPrivate;
   final String plan;
-  final String? joinCode;
   final List<GroupMember> members;
 
   const Group({
@@ -19,9 +17,7 @@ class Group {
     required this.ownerId,
     this.memberCount = 0,
     this.isMember = false,
-    this.isPrivate = false,
     this.plan = 'free',
-    this.joinCode,
     this.members = const [],
   });
 
@@ -33,9 +29,7 @@ class Group {
         ownerId: json['owner_id'] as String,
         memberCount: json['member_count'] as int? ?? 0,
         isMember: json['is_member'] as bool? ?? false,
-        isPrivate: json['is_private'] as bool? ?? false,
         plan: json['plan'] as String? ?? 'free',
-        joinCode: json['join_code'] as String?,
         members: (json['members'] as List<dynamic>?)
                 ?.map((m) => GroupMember.fromJson(m as Map<String, dynamic>))
                 .toList() ??

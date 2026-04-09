@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"math/rand"
 	"net/http"
 
 	"tenplate/models"
@@ -10,15 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
-
-func generateJoinCode() string {
-	const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-	b := make([]byte, 8)
-	for i := range b {
-		b[i] = chars[rand.Intn(len(chars))]
-	}
-	return string(b)
-}
 
 type GroupHandler struct {
 	db *gorm.DB
@@ -29,9 +19,9 @@ func NewGroupHandler(db *gorm.DB) *GroupHandler {
 }
 
 type CreateGroupRequest struct {
-	Name        string `json:"name" binding:"required,min=2"`
+	Name        string `json:"name"     binding:"required,min=2"`
 	Description string `json:"description"`
-	IsPrivate   bool   `json:"is_private"`
+	TeamSlug    string `json:"team_slug"`
 }
 
 type GroupResponse struct {
@@ -42,9 +32,8 @@ type GroupResponse struct {
 	OwnerID     string                `json:"owner_id"`
 	MemberCount int                   `json:"member_count"`
 	IsMember    bool                  `json:"is_member"`
-	IsPrivate   bool                  `json:"is_private"`
 	Plan        string                `json:"plan"`
-	JoinCode    string                `json:"join_code,omitempty"`
+	TeamID      string                `json:"team_id,omitempty"`
 	Members     []models.UserResponse `json:"members,omitempty"`
 }
 
@@ -59,13 +48,9 @@ func groupToResponse(g models.Group, userID string, includeMembers bool) GroupRe
 			members = append(members, m.ToResponse())
 		}
 	}
-	joinCode := ""
-	if g.OwnerID == userID {
-		joinCode = g.JoinCode
-	}
-	plan := g.Plan
-	if plan == "" {
-		plan = "free"
+	plan := "free"
+	if g.Team != nil && g.Team.Plan != "" {
+		plan = g.Team.Plan
 	}
 	return GroupResponse{
 		ID:          g.ID,
@@ -75,9 +60,8 @@ func groupToResponse(g models.Group, userID string, includeMembers bool) GroupRe
 		OwnerID:     g.OwnerID,
 		MemberCount: len(g.Members),
 		IsMember:    isMember,
-		IsPrivate:   g.IsPrivate,
 		Plan:        plan,
-		JoinCode:    joinCode,
+		TeamID:      g.TeamID,
 		Members:     members,
 	}
 }
@@ -86,7 +70,7 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
 
 	var groups []models.Group
-	if err := h.db.Preload("Members").Find(&groups).Error; err != nil {
+	if err := h.db.Preload("Members").Preload("Team").Find(&groups).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch groups"})
 		return
 	}
@@ -119,19 +103,19 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 		return count > 0
 	})
 
-	joinCode := ""
-	if req.IsPrivate {
-		joinCode = generateJoinCode()
-	}
-
 	group := models.Group{
 		Name:        req.Name,
 		Slug:        slug,
 		Description: req.Description,
 		OwnerID:     userID,
-		IsPrivate:   req.IsPrivate,
-		JoinCode:    joinCode,
 		Members:     []models.User{user},
+	}
+
+	if req.TeamSlug != "" {
+		var team models.Team
+		if err := h.db.Where("slug = ? AND owner_id = ?", req.TeamSlug, userID).First(&team).Error; err == nil {
+			group.TeamID = team.ID
+		}
 	}
 
 	if err := h.db.Create(&group).Error; err != nil {
@@ -139,18 +123,8 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, GroupResponse{
-		ID:          group.ID,
-		Slug:        group.Slug,
-		Name:        group.Name,
-		Description: group.Description,
-		OwnerID:     group.OwnerID,
-		MemberCount: 1,
-		IsMember:    true,
-		IsPrivate:   group.IsPrivate,
-		Plan:        "free",
-		JoinCode:    group.JoinCode,
-	})
+	h.db.Preload("Team").Preload("Members").Where("id = ?", group.ID).First(&group)
+	c.JSON(http.StatusCreated, groupToResponse(group, userID, true))
 }
 
 func (h *GroupHandler) GetGroup(c *gin.Context) {
@@ -158,16 +132,12 @@ func (h *GroupHandler) GetGroup(c *gin.Context) {
 	slug := c.Param("id")
 
 	var group models.Group
-	if err := h.db.Preload("Members").Where("slug = ?", slug).First(&group).Error; err != nil {
+	if err := h.db.Preload("Members").Preload("Team").Where("slug = ?", slug).First(&group).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
 		return
 	}
 
 	c.JSON(http.StatusOK, groupToResponse(group, userID, true))
-}
-
-type JoinGroupRequest struct {
-	Code string `json:"code"`
 }
 
 func (h *GroupHandler) JoinGroup(c *gin.Context) {
@@ -187,15 +157,6 @@ func (h *GroupHandler) JoinGroup(c *gin.Context) {
 		}
 	}
 
-	if group.IsPrivate {
-		var req JoinGroupRequest
-		_ = c.ShouldBindJSON(&req)
-		if req.Code != group.JoinCode {
-			c.JSON(http.StatusForbidden, gin.H{"error": "invalid invite code"})
-			return
-		}
-	}
-
 	var user models.User
 	if err := h.db.Where("id = ?", userID).First(&user).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
@@ -208,42 +169,6 @@ func (h *GroupHandler) JoinGroup(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "successfully joined group"})
-}
-
-func (h *GroupHandler) JoinByCode(c *gin.Context) {
-	userID := c.MustGet("userID").(string)
-
-	var req JoinGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Code == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "code is required"})
-		return
-	}
-
-	var group models.Group
-	if err := h.db.Preload("Members").Where("join_code = ? AND is_private = ?", req.Code, true).First(&group).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "invalid invite code"})
-		return
-	}
-
-	for _, m := range group.Members {
-		if m.ID == userID {
-			c.JSON(http.StatusOK, gin.H{"slug": group.Slug, "name": group.Name})
-			return
-		}
-	}
-
-	var user models.User
-	if err := h.db.Where("id = ?", userID).First(&user).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-		return
-	}
-
-	if err := h.db.Model(&group).Association("Members").Append(&user); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to join group"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"slug": group.Slug, "name": group.Name})
 }
 
 func (h *GroupHandler) LeaveGroup(c *gin.Context) {
@@ -279,20 +204,16 @@ func (h *GroupHandler) GetMyGroups(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
 
 	var user models.User
-	if err := h.db.Preload("Groups").Where("id = ?", userID).First(&user).Error; err != nil {
+	if err := h.db.Preload("Groups.Team").Where("id = ?", userID).First(&user).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
 
 	response := make([]GroupResponse, len(user.Groups))
 	for i, g := range user.Groups {
-		joinCode := ""
-		if g.OwnerID == userID {
-			joinCode = g.JoinCode
-		}
-		plan := g.Plan
-		if plan == "" {
-			plan = "free"
+		plan := "free"
+		if g.Team != nil && g.Team.Plan != "" {
+			plan = g.Team.Plan
 		}
 		response[i] = GroupResponse{
 			ID:          g.ID,
@@ -301,49 +222,33 @@ func (h *GroupHandler) GetMyGroups(c *gin.Context) {
 			Description: g.Description,
 			OwnerID:     g.OwnerID,
 			IsMember:    true,
-			IsPrivate:   g.IsPrivate,
 			Plan:        plan,
-			JoinCode:    joinCode,
+			TeamID:      g.TeamID,
 		}
 	}
 
 	c.JSON(http.StatusOK, response)
 }
 
-func (h *GroupHandler) UpdateGroupPlan(c *gin.Context) {
+func (h *GroupHandler) ListTeamGroups(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
-	slug := c.Param("id")
+	teamSlug := c.Param("id")
 
-	var group models.Group
-	if err := h.db.Where("slug = ?", slug).First(&group).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
+	var team models.Team
+	if err := h.db.Where("slug = ?", teamSlug).First(&team).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "team not found"})
 		return
 	}
 
-	if group.OwnerID != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only the group owner can change the plan"})
+	var groups []models.Group
+	if err := h.db.Preload("Members").Preload("Team").Where("team_id = ?", team.ID).Find(&groups).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch groups"})
 		return
 	}
 
-	var req struct {
-		Plan string `json:"plan" binding:"required"`
+	response := make([]GroupResponse, len(groups))
+	for i, g := range groups {
+		response[i] = groupToResponse(g, userID, false)
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	valid := map[string]bool{"free": true, "standard": true, "pro": true}
-	if !valid[req.Plan] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan"})
-		return
-	}
-
-	if err := h.db.Model(&group).Update("plan", req.Plan).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update plan"})
-		return
-	}
-
-	h.db.Preload("Members").Where("slug = ?", slug).First(&group)
-	c.JSON(http.StatusOK, groupToResponse(group, userID, true))
+	c.JSON(http.StatusOK, response)
 }

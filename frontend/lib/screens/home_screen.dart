@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/group.dart';
-import '../services/api_service.dart';
 import 'app_shell.dart';
 
 class MyGroupsScreen extends StatefulWidget {
@@ -56,12 +55,8 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
   Future<void> _joinGroup(Group group) async {
     final api = context.read<AuthProvider>().api;
     try {
-      if (group.isPrivate) {
-        await _joinWithCode(group, api);
-      } else {
-        await api.joinGroup(group.slug);
-        setState(_load);
-      }
+      await api.joinGroup(group.slug);
+      setState(_load);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -70,34 +65,36 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
     }
   }
 
-  Future<void> _joinWithCode(Group group, ApiService api) async {
-    final codeCtrl = TextEditingController();
+  Future<void> _showCreateDialog() async {
+    final nameCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.lock_outline, size: 18),
-            const SizedBox(width: 8),
-            Text('Join ${group.name}'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'This group is invite only. Enter the invite code to join.',
-              style: TextStyle(fontSize: 13, color: Colors.grey),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: codeCtrl,
-              decoration: const InputDecoration(labelText: 'Invite code'),
-              autofocus: true,
-              textCapitalization: TextCapitalization.characters,
-            ),
-          ],
+        title: const Text('Create Group'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Group name'),
+                validator: (v) =>
+                    v == null || v.isEmpty ? 'Name is required' : null,
+                autofocus: true,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: descCtrl,
+                decoration:
+                    const InputDecoration(labelText: 'Description (optional)'),
+                maxLines: 2,
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -105,73 +102,14 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Join'),
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(ctx, true);
+              }
+            },
+            child: const Text('Create'),
           ),
         ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    await api.joinGroup(group.slug, code: codeCtrl.text.trim());
-    setState(_load);
-  }
-
-  Future<void> _showCreateDialog() async {
-    final nameCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-    bool isPrivate = false;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Create Group'),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Group name'),
-                  validator: (v) =>
-                      v == null || v.isEmpty ? 'Name is required' : null,
-                  autofocus: true,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: descCtrl,
-                  decoration:
-                      const InputDecoration(labelText: 'Description (optional)'),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 4),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Invite only'),
-                  subtitle: const Text('Members need a code to join'),
-                  value: isPrivate,
-                  onChanged: (v) => setLocal(() => isPrivate = v),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (formKey.currentState!.validate()) {
-                  Navigator.pop(ctx, true);
-                }
-              },
-              child: const Text('Create'),
-            ),
-          ],
-        ),
       ),
     );
 
@@ -182,7 +120,6 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
       await api.createGroup(
         name: nameCtrl.text.trim(),
         description: descCtrl.text.trim(),
-        isPrivate: isPrivate,
       );
       _refresh();
     } catch (e) {
@@ -398,11 +335,6 @@ class _DiscoverCard extends StatelessWidget {
                       Text(group.name,
                           style: const TextStyle(
                               fontWeight: FontWeight.w600, fontSize: 16)),
-                      if (group.isPrivate) ...[
-                        const SizedBox(width: 6),
-                        const Icon(Icons.lock_outline,
-                            size: 14, color: Colors.grey),
-                      ],
                     ],
                   ),
                   if (group.description.isNotEmpty) ...[
@@ -433,7 +365,7 @@ class _DiscoverCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 minimumSize: const Size(0, 32),
               ),
-              child: Text(group.isPrivate ? 'Join with Code' : 'Join'),
+              child: const Text('Join'),
             ),
           ],
         ),
@@ -480,18 +412,9 @@ class _GroupCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Text(group.name,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 16)),
-                        if (group.isPrivate) ...[
-                          const SizedBox(width: 6),
-                          const Icon(Icons.lock_outline,
-                              size: 14, color: Colors.grey),
-                        ],
-                      ],
-                    ),
+                    Text(group.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 16)),
                     if (group.description.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(

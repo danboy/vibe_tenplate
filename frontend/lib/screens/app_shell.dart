@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../models/group.dart';
 
 // Provides the outer drawer opener to child screens so they can show a
 // hamburger button on mobile without needing a nested-Scaffold hack.
@@ -11,7 +12,6 @@ class AppShellScope extends InheritedWidget {
 
   const AppShellScope({super.key, this.openDrawer, required super.child});
 
-  /// Returns the drawer-open callback, or null when not on mobile.
   static VoidCallback? drawerOpener(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<AppShellScope>()?.openDrawer;
 
@@ -38,18 +38,19 @@ class _AppShellState extends State<AppShell> {
     return m?.group(1);
   }
 
-  int _navIndex(String location) {
-    if (_groupSlug(location) != null) return 0;
-    return -1;
+  String? _teamSlug(String location) {
+    final m = RegExp(r'^/teams/([^/]+)').firstMatch(location);
+    return m?.group(1);
   }
 
   @override
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
     final groupSlug = _groupSlug(location);
+    final teamSlugInRoute = _teamSlug(location);
     if (groupSlug != null) _lastGroupSlug = groupSlug;
     final effectiveGroupSlug = groupSlug ?? _lastGroupSlug;
-    final selectedIndex = _navIndex(location);
+    final onTeamsList = location == '/teams';
     final width = MediaQuery.of(context).size.width;
     final isMobile = width < 600;
     final isTablet = width >= 600 && width < 900;
@@ -63,8 +64,8 @@ class _AppShellState extends State<AppShell> {
             child: SafeArea(
               child: _SidebarContent(
                 expanded: true,
-                selectedIndex: selectedIndex,
                 groupSlug: effectiveGroupSlug,
+                onTeamsList: onTeamsList,
                 showToggle: false,
                 onToggle: null,
                 onItemTap: () => _scaffoldKey.currentState?.closeDrawer(),
@@ -82,8 +83,8 @@ class _AppShellState extends State<AppShell> {
           children: [
             _Sidebar(
               expanded: isTablet ? false : _expanded,
-              selectedIndex: selectedIndex,
               groupSlug: effectiveGroupSlug,
+              onTeamsList: onTeamsList,
               onToggle: isTablet
                   ? null
                   : () => setState(() => _expanded = !_expanded),
@@ -105,14 +106,14 @@ class _AppShellState extends State<AppShell> {
 
 class _Sidebar extends StatelessWidget {
   final bool expanded;
-  final int selectedIndex;
   final String? groupSlug;
+  final bool onTeamsList;
   final VoidCallback? onToggle;
 
   const _Sidebar({
     required this.expanded,
-    required this.selectedIndex,
     this.groupSlug,
+    required this.onTeamsList,
     this.onToggle,
   });
 
@@ -125,8 +126,8 @@ class _Sidebar extends StatelessWidget {
       color: Theme.of(context).colorScheme.surface,
       child: _SidebarContent(
         expanded: expanded,
-        selectedIndex: selectedIndex,
         groupSlug: groupSlug,
+        onTeamsList: onTeamsList,
         showToggle: onToggle != null,
         onToggle: onToggle,
         onItemTap: null,
@@ -135,33 +136,67 @@ class _Sidebar extends StatelessWidget {
   }
 }
 
-// ─── Sidebar content (shared between rail and drawer) ────────────────────────
+// ─── Sidebar content (stateful — loads groups for current team) ───────────────
 
-class _SidebarContent extends StatelessWidget {
+class _SidebarContent extends StatefulWidget {
   final bool expanded;
-  final int selectedIndex;
   final String? groupSlug;
+  final bool onTeamsList;
   final bool showToggle;
   final VoidCallback? onToggle;
-  final VoidCallback? onItemTap; // called after nav tap (closes drawer)
+  final VoidCallback? onItemTap;
 
   const _SidebarContent({
     required this.expanded,
-    required this.selectedIndex,
     this.groupSlug,
+    required this.onTeamsList,
     required this.showToggle,
     this.onToggle,
     this.onItemTap,
   });
 
   @override
+  State<_SidebarContent> createState() => _SidebarContentState();
+}
+
+class _SidebarContentState extends State<_SidebarContent> {
+  List<Group>? _groups;
+  String? _loadedForTeam;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final teamSlug = context.watch<AuthProvider>().currentTeamSlug;
+    if (teamSlug != _loadedForTeam) {
+      _loadedForTeam = teamSlug;
+      _loadGroups(teamSlug);
+    }
+  }
+
+  Future<void> _loadGroups(String? teamSlug) async {
+    if (teamSlug == null) {
+      if (mounted) setState(() => _groups = null);
+      return;
+    }
+    try {
+      final api = context.read<AuthProvider>().api;
+      final groups = await api.listTeamGroups(teamSlug);
+      if (mounted && _loadedForTeam == teamSlug) {
+        setState(() => _groups = groups);
+      }
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasHeader = showToggle || expanded;
+    final hasHeader = widget.showToggle || widget.expanded;
+    final groups = _groups ?? [];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // ── Header ──────────────────────────────────────────────────────────
         if (hasHeader)
           Container(
             height: kToolbarHeight,
@@ -173,14 +208,16 @@ class _SidebarContent extends StatelessWidget {
             ),
             child: Row(
               children: [
-                if (showToggle)
+                if (widget.showToggle)
                   IconButton(
                     icon: const Icon(Icons.menu, size: 20),
-                    onPressed: onToggle,
-                    tooltip: expanded ? 'Collapse sidebar' : 'Expand sidebar',
+                    onPressed: widget.onToggle,
+                    tooltip: widget.expanded
+                        ? 'Collapse sidebar'
+                        : 'Expand sidebar',
                   ),
-                if (expanded) ...[
-                  if (showToggle) const SizedBox(width: 4),
+                if (widget.expanded) ...[
+                  if (widget.showToggle) const SizedBox(width: 4),
                   SvgPicture.asset('assets/logo.svg', width: 24, height: 24),
                   const SizedBox(width: 8),
                   Text(
@@ -190,7 +227,7 @@ class _SidebarContent extends StatelessWidget {
                       letterSpacing: -0.3,
                     ),
                   ),
-                ] else if (!showToggle) ...[
+                ] else if (!widget.showToggle) ...[
                   Expanded(
                     child: Center(
                       child: SvgPicture.asset('assets/logo.svg',
@@ -201,23 +238,60 @@ class _SidebarContent extends StatelessWidget {
               ],
             ),
           ),
+
+        // ── Teams nav item ────────────────────────────────────────────────
         const SizedBox(height: 8),
         _SidebarItem(
-          icon: Icons.grid_view_outlined,
-          selectedIcon: Icons.grid_view,
-          label: 'Projects',
-          selected: selectedIndex == 0,
-          expanded: expanded,
+          icon: Icons.group_work_outlined,
+          selectedIcon: Icons.group_work,
+          label: 'Teams',
+          selected: widget.onTeamsList,
+          expanded: widget.expanded,
           onTap: () {
-            context.go(
-              groupSlug != null ? '/groups/$groupSlug' : '/groups',
-            );
-            onItemTap?.call();
+            context.go('/teams');
+            widget.onItemTap?.call();
           },
         ),
+
+        // ── Groups list ────────────────────────────────────────────────────
+        if (groups.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          if (widget.expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
+              child: Text(
+                'Groups',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Divider(
+                  height: 8,
+                  thickness: 1,
+                  color: theme.colorScheme.outlineVariant),
+            ),
+          for (final g in groups)
+            _SidebarItem(
+              icon: Icons.folder_outlined,
+              selectedIcon: Icons.folder,
+              label: g.name,
+              selected: widget.groupSlug == g.slug,
+              expanded: widget.expanded,
+              onTap: () {
+                context.go('/groups/${g.slug}');
+                widget.onItemTap?.call();
+              },
+            ),
+        ],
+
         const Spacer(),
         Container(height: 1, color: theme.colorScheme.outlineVariant),
-        _UserFooter(expanded: expanded, onNavigate: onItemTap),
+        _UserFooter(expanded: widget.expanded, onNavigate: widget.onItemTap),
       ],
     );
   }
@@ -265,15 +339,18 @@ class _SidebarItem extends StatelessWidget {
                 Icon(selected ? selectedIcon : icon, size: 20, color: color),
                 if (expanded) ...[
                   const SizedBox(width: 12),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight:
-                          selected ? FontWeight.w600 : FontWeight.w400,
-                      color: selected
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurface,
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.w400,
+                        color: selected
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -316,8 +393,8 @@ class _UserFooter extends StatelessWidget {
 
     return PopupMenuButton<String>(
       onSelected: (value) {
-        if (value == 'groups') {
-          context.go('/groups');
+        if (value == 'teams') {
+          context.go('/teams');
           onNavigate?.call();
         }
         if (value == 'profile') {
@@ -329,7 +406,7 @@ class _UserFooter extends StatelessWidget {
       offset: const Offset(0, -8),
       position: PopupMenuPosition.over,
       itemBuilder: (_) => [
-        const PopupMenuItem(value: 'groups', child: Text('My Groups')),
+        const PopupMenuItem(value: 'teams', child: Text('My Teams')),
         const PopupMenuItem(value: 'profile', child: Text('Profile')),
         const PopupMenuDivider(),
         const PopupMenuItem(value: 'logout', child: Text('Log out')),
@@ -355,7 +432,8 @@ class _UserFooter extends StatelessWidget {
                         Text(
                           user.email,
                           style: TextStyle(
-                              fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                              fontSize: 11,
+                              color: theme.colorScheme.onSurfaceVariant),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],

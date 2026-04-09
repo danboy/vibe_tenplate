@@ -8,20 +8,31 @@ class AuthProvider extends ChangeNotifier {
   User? _user;
   bool _isLoading = true;
   String? _pendingPlan;
+  String? _currentTeamSlug;
 
   bool get isAuthenticated => _token != null && _user != null;
   bool get isLoading => _isLoading;
   User? get user => _user;
   String? get token => _token;
   String? get pendingPlan => _pendingPlan;
+  String? get currentTeamSlug => _currentTeamSlug;
 
   void clearPendingPlan() => _pendingPlan = null;
 
   ApiService get api => ApiService(token: _token);
 
+  Future<void> setCurrentTeam(String slug) async {
+    if (_currentTeamSlug == slug) return;
+    _currentTeamSlug = slug;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('current_team_slug', slug);
+    notifyListeners();
+  }
+
   Future<void> loadToken() async {
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString('auth_token');
+    _currentTeamSlug = prefs.getString('current_team_slug');
     if (_token != null) {
       try {
         _user = await ApiService(token: _token).getMe();
@@ -68,8 +79,10 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     _token = null;
     _user = null;
+    _currentTeamSlug = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
+    await prefs.remove('current_team_slug');
     notifyListeners();
   }
 }

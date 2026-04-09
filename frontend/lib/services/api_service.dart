@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/group.dart';
 import '../models/project.dart';
+import '../models/team.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -142,6 +143,101 @@ class ApiService {
     return data['token'] as String;
   }
 
+  // ── Teams ───────────────────────────────────────────────────────────────────
+
+  Future<List<Team>> listTeams() async {
+    final response = await _get(Uri.parse('$baseUrl/teams'));
+    final list = await _parseList(response);
+    return list.map((t) => Team.fromJson(t as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<Team>> listMyTeams() async {
+    final response = await _get(Uri.parse('$baseUrl/users/me/teams'));
+    final list = await _parseList(response);
+    return list.map((t) => Team.fromJson(t as Map<String, dynamic>)).toList();
+  }
+
+  Future<Team> getTeam(String slug) async {
+    final response = await _get(Uri.parse('$baseUrl/teams/$slug'));
+    final data = await _parseMap(response);
+    return Team.fromJson(data);
+  }
+
+  Future<Team> createTeam({
+    required String name,
+    String description = '',
+    bool isPrivate = false,
+  }) async {
+    final response = await _post(
+      Uri.parse('$baseUrl/teams'),
+      body: json.encode({
+        'name': name,
+        'description': description,
+        'is_private': isPrivate,
+      }),
+    );
+    final data = await _parseMap(response);
+    return Team.fromJson(data);
+  }
+
+  Future<({String slug, String name})> joinTeamByCode(String code) async {
+    final response = await _post(
+      Uri.parse('$baseUrl/teams/join-by-code'),
+      body: json.encode({'code': code}),
+    );
+    final data = await _parseMap(response);
+    return (slug: data['slug'] as String, name: data['name'] as String);
+  }
+
+  Future<void> joinTeam(String slug, {String? code}) async {
+    final response = await _post(
+      Uri.parse('$baseUrl/teams/$slug/join'),
+      body: code != null ? json.encode({'code': code}) : null,
+    );
+    await _parseMap(response);
+  }
+
+  Future<void> leaveTeam(String slug) async {
+    final response = await _post(Uri.parse('$baseUrl/teams/$slug/leave'));
+    await _parseMap(response);
+  }
+
+  Future<List<Group>> listTeamGroups(String teamSlug) async {
+    final response = await _get(Uri.parse('$baseUrl/teams/$teamSlug/groups'));
+    final list = await _parseList(response);
+    return list.map((g) => Group.fromJson(g as Map<String, dynamic>)).toList();
+  }
+
+  Future<String> createTeamCheckoutSession({
+    required String teamSlug,
+    required String plan,
+    required String successUrl,
+    required String cancelUrl,
+  }) async {
+    final response = await _post(
+      Uri.parse('$baseUrl/teams/$teamSlug/checkout'),
+      body: json.encode({
+        'plan': plan,
+        'success_url': successUrl,
+        'cancel_url': cancelUrl,
+      }),
+    );
+    final data = await _parseMap(response);
+    return data['url'] as String;
+  }
+
+  Future<String> createTeamBillingPortalSession({
+    required String teamSlug,
+    required String returnUrl,
+  }) async {
+    final response = await _post(
+      Uri.parse('$baseUrl/teams/$teamSlug/billing-portal'),
+      body: json.encode({'return_url': returnUrl}),
+    );
+    final data = await _parseMap(response);
+    return data['url'] as String;
+  }
+
   // ── Groups ──────────────────────────────────────────────────────────────────
 
   Future<List<Group>> listGroups() async {
@@ -160,6 +256,7 @@ class ApiService {
     required String name,
     required String description,
     bool isPrivate = false,
+    String? teamSlug,
   }) async {
     final response = await _post(
       Uri.parse('$baseUrl/groups'),
@@ -167,26 +264,15 @@ class ApiService {
         'name': name,
         'description': description,
         'is_private': isPrivate,
+        if (teamSlug != null) 'team_slug': teamSlug,
       }),
     );
     final data = await _parseMap(response);
     return Group.fromJson(data);
   }
 
-  Future<({String slug, String name})> joinByCode(String code) async {
-    final response = await _post(
-      Uri.parse('$baseUrl/groups/join-by-code'),
-      body: json.encode({'code': code}),
-    );
-    final data = await _parseMap(response);
-    return (slug: data['slug'] as String, name: data['name'] as String);
-  }
-
-  Future<void> joinGroup(String slug, {String? code}) async {
-    final response = await _post(
-      Uri.parse('$baseUrl/groups/$slug/join'),
-      body: code != null ? json.encode({'code': code}) : null,
-    );
+  Future<void> joinGroup(String slug) async {
+    final response = await _post(Uri.parse('$baseUrl/groups/$slug/join'));
     await _parseMap(response);
   }
 

@@ -42,7 +42,7 @@ func (h *ProjectHandler) loadGroupAsMember(c *gin.Context) (*models.Group, bool)
 	groupSlug := c.Param("id")
 
 	var group models.Group
-	if err := h.db.Preload("Members").Where("slug = ?", groupSlug).First(&group).Error; err != nil {
+	if err := h.db.Preload("Members").Preload("Team").Where("slug = ?", groupSlug).First(&group).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
 		return nil, false
 	}
@@ -114,9 +114,9 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		return
 	}
 
-	groupPlan := group.Plan
-	if groupPlan == "" {
-		groupPlan = "free"
+	groupPlan := "free"
+	if group.Team != nil && group.Team.Plan != "" {
+		groupPlan = group.Team.Plan
 	}
 
 	if groupPlan == "free" {
@@ -277,7 +277,11 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		return
 	}
 
-	if group.Plan == "" || group.Plan == "free" {
+	groupPlanForUpdate := "free"
+	if group.Team != nil && group.Team.Plan != "" {
+		groupPlanForUpdate = group.Team.Plan
+	}
+	if groupPlanForUpdate == "free" {
 		req.EnableProblem = true
 		req.EnableVote = true
 		req.EnablePrioritise = true

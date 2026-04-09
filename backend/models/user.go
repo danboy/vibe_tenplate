@@ -17,6 +17,7 @@ type User struct {
 	Password         string         `json:"-"        gorm:"not null"`
 	StripeCustomerID string         `json:"-"        gorm:"type:text"`
 	Groups           []Group        `json:"groups,omitempty" gorm:"many2many:user_groups;"`
+	Teams            []Team         `json:"teams,omitempty"  gorm:"many2many:team_members;"`
 }
 
 func (u *User) BeforeCreate(tx *gorm.DB) error {

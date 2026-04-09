@@ -15,7 +15,7 @@ class JoinScreen extends StatefulWidget {
 class _JoinScreenState extends State<JoinScreen> {
   bool _loading = true;
   String? _error;
-  String? _groupName;
+  String? _teamName;
 
   @override
   void initState() {
@@ -30,11 +30,11 @@ class _JoinScreenState extends State<JoinScreen> {
     });
     try {
       final api = context.read<AuthProvider>().api;
-      final result = await api.joinByCode(widget.code);
+      final result = await api.joinTeamByCode(widget.code);
       if (!mounted) return;
-      setState(() => _groupName = result.name);
+      setState(() => _teamName = result.name);
       await Future.delayed(const Duration(milliseconds: 800));
-      if (mounted) context.go('/groups/${result.slug}');
+      if (mounted) context.go('/teams/${result.slug}');
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -58,7 +58,7 @@ class _JoinScreenState extends State<JoinScreen> {
                 if (_loading) ...[
                   const CircularProgressIndicator(),
                   const SizedBox(height: 24),
-                  const Text('Joining group…',
+                  const Text('Joining team…',
                       style:
                           TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                 ] else if (_error != null) ...[
@@ -75,7 +75,7 @@ class _JoinScreenState extends State<JoinScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       OutlinedButton(
-                        onPressed: () => context.go('/groups'),
+                        onPressed: () => context.go('/teams'),
                         child: const Text('Go home'),
                       ),
                       const SizedBox(width: 12),
@@ -90,13 +90,14 @@ class _JoinScreenState extends State<JoinScreen> {
                       size: 56, color: theme.colorScheme.primary),
                   const SizedBox(height: 16),
                   Text(
-                    'Joined ${_groupName ?? 'group'}!',
+                    'Joined ${_teamName ?? 'team'}!',
                     style: const TextStyle(
                         fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
                   Text('Taking you there…',
-                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+                      style: TextStyle(
+                          color: theme.colorScheme.onSurfaceVariant)),
                 ],
               ],
             ),

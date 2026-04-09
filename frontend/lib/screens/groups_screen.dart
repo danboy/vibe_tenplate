@@ -35,8 +35,6 @@ class _GroupsScreenState extends State<GroupsScreen> {
       if (group.isMember) {
         await api.leaveGroup(group.slug);
         _refresh();
-      } else if (group.isPrivate) {
-        await _joinWithCode(group);
       } else {
         await api.joinGroup(group.slug);
         _refresh();
@@ -47,53 +45,6 @@ class _GroupsScreenState extends State<GroupsScreen> {
             .showSnackBar(SnackBar(content: Text(e.toString())));
       }
     }
-  }
-
-  Future<void> _joinWithCode(Group group) async {
-    final codeCtrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.lock_outline, size: 18),
-            const SizedBox(width: 8),
-            Text('Join ${group.name}'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'This group is invite only. Enter the invite code to join.',
-              style: TextStyle(fontSize: 13, color: Colors.grey),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: codeCtrl,
-              decoration: const InputDecoration(labelText: 'Invite code'),
-              autofocus: true,
-              textCapitalization: TextCapitalization.characters,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Join'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    final api = context.read<AuthProvider>().api;
-    await api.joinGroup(group.slug, code: codeCtrl.text.trim());
-    _refresh();
   }
 
   @override
@@ -212,7 +163,7 @@ class _DiscoverCard extends StatelessWidget {
               CircleAvatar(
                 backgroundColor: group.isMember
                     ? theme.colorScheme.primary
-                    : theme.colorScheme.surfaceVariant,
+                    : theme.colorScheme.surfaceContainerHighest,
                 child: Text(
                   group.name[0].toUpperCase(),
                   style: TextStyle(
@@ -228,19 +179,10 @@ class _DiscoverCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Text(
-                          group.name,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 16),
-                        ),
-                        if (group.isPrivate) ...[
-                          const SizedBox(width: 6),
-                          const Icon(Icons.lock_outline,
-                              size: 14, color: Colors.grey),
-                        ],
-                      ],
+                    Text(
+                      group.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 16),
                     ),
                     if (group.description.isNotEmpty) ...[
                       const SizedBox(height: 2),
@@ -274,11 +216,7 @@ class _DiscoverCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   minimumSize: const Size(0, 32),
                 ),
-                child: Text(group.isMember
-                    ? 'Leave'
-                    : group.isPrivate
-                        ? 'Join with Code'
-                        : 'Join'),
+                child: Text(group.isMember ? 'Leave' : 'Join'),
               ),
             ],
           ),
