@@ -18,6 +18,13 @@ func NewGroupHandler(db *gorm.DB) *GroupHandler {
 	return &GroupHandler{db: db}
 }
 
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 type CreateGroupRequest struct {
 	Name        string `json:"name"     binding:"required,min=2"`
 	Description string `json:"description"`
@@ -34,10 +41,11 @@ type GroupResponse struct {
 	IsMember    bool                  `json:"is_member"`
 	Plan        string                `json:"plan"`
 	TeamID      string                `json:"team_id,omitempty"`
+	MyTeamRole  string                `json:"my_team_role,omitempty"`
 	Members     []models.UserResponse `json:"members,omitempty"`
 }
 
-func groupToResponse(g models.Group, userID string, includeMembers bool) GroupResponse {
+func groupToResponse(g models.Group, userID string, includeMembers bool, myTeamRole string) GroupResponse {
 	isMember := false
 	var members []models.UserResponse
 	for _, m := range g.Members {
@@ -61,7 +69,8 @@ func groupToResponse(g models.Group, userID string, includeMembers bool) GroupRe
 		MemberCount: len(g.Members),
 		IsMember:    isMember,
 		Plan:        plan,
-		TeamID:      g.TeamID,
+		TeamID:      derefStr(g.TeamID),
+		MyTeamRole:  myTeamRole,
 		Members:     members,
 	}
 }
@@ -77,7 +86,7 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 
 	response := make([]GroupResponse, len(groups))
 	for i, g := range groups {
-		response[i] = groupToResponse(g, userID, false)
+		response[i] = groupToResponse(g, userID, false, "")
 	}
 	c.JSON(http.StatusOK, response)
 }
@@ -111,11 +120,24 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 		Members:     []models.User{user},
 	}
 
+	myTeamRole := ""
 	if req.TeamSlug != "" {
 		var team models.Team
-		if err := h.db.Where("slug = ? AND owner_id = ?", req.TeamSlug, userID).First(&team).Error; err == nil {
-			group.TeamID = team.ID
+		if err := h.db.Where("slug = ?", req.TeamSlug).First(&team).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "team not found"})
+			return
 		}
+		if team.OwnerID == userID {
+			myTeamRole = "owner"
+		} else {
+			var tm models.TeamMember
+			if err := h.db.Where("team_id = ? AND user_id = ?", team.ID, userID).First(&tm).Error; err != nil || tm.Role != "editor" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "only team owners and editors can create groups"})
+				return
+			}
+			myTeamRole = "editor"
+		}
+		group.TeamID = &team.ID
 	}
 
 	if err := h.db.Create(&group).Error; err != nil {
@@ -124,7 +146,7 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 	}
 
 	h.db.Preload("Team").Preload("Members").Where("id = ?", group.ID).First(&group)
-	c.JSON(http.StatusCreated, groupToResponse(group, userID, true))
+	c.JSON(http.StatusCreated, groupToResponse(group, userID, true, myTeamRole))
 }
 
 func (h *GroupHandler) GetGroup(c *gin.Context) {
@@ -137,7 +159,19 @@ func (h *GroupHandler) GetGroup(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, groupToResponse(group, userID, true))
+	myTeamRole := ""
+	if group.Team != nil {
+		if group.Team.OwnerID == userID {
+			myTeamRole = "owner"
+		} else {
+			var tm models.TeamMember
+			if err := h.db.Where("team_id = ? AND user_id = ?", group.Team.ID, userID).First(&tm).Error; err == nil {
+				myTeamRole = tm.Role
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, groupToResponse(group, userID, true, myTeamRole))
 }
 
 func (h *GroupHandler) JoinGroup(c *gin.Context) {
@@ -223,7 +257,7 @@ func (h *GroupHandler) GetMyGroups(c *gin.Context) {
 			OwnerID:     g.OwnerID,
 			IsMember:    true,
 			Plan:        plan,
-			TeamID:      g.TeamID,
+			TeamID:      derefStr(g.TeamID),
 		}
 	}
 
@@ -248,7 +282,7 @@ func (h *GroupHandler) ListTeamGroups(c *gin.Context) {
 
 	response := make([]GroupResponse, len(groups))
 	for i, g := range groups {
-		response[i] = groupToResponse(g, userID, false)
+		response[i] = groupToResponse(g, userID, false, "")
 	}
 	c.JSON(http.StatusOK, response)
 }

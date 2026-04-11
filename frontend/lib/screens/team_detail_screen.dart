@@ -1,8 +1,6 @@
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -43,11 +41,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       try {
         final team = await api.getTeam(widget.teamSlug);
         if (team.plan != 'free') {
-          html.window.history.replaceState(
-            null,
-            '',
-            Uri.base.replace(queryParameters: {}).toString(),
-          );
           setState(() {
             _future = Future.value(team);
             _awaitingPlanUpdate = false;
@@ -129,8 +122,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   const SizedBox(height: 8),
                   ...team.members.map((m) => _MemberTile(
                         member: m,
-                        isOwner: m.id == team.ownerId,
                         isMe: m.id == me.id,
+                        canManageRoles: isOwner ||
+                            team.members
+                                .where((x) => x.id == me.id)
+                                .firstOrNull
+                                ?.role ==
+                                'editor',
+                        teamSlug: team.slug,
+                        onRoleChanged: _refresh,
                       )),
                   if (isOwner) ...[
                     const SizedBox(height: 24),
@@ -406,7 +406,7 @@ class _TeamPlanSelectorState extends State<_TeamPlanSelector> {
         successUrl: successUrl,
         cancelUrl: Uri.base.toString(),
       );
-      html.window.location.href = url;
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -425,7 +425,7 @@ class _TeamPlanSelectorState extends State<_TeamPlanSelector> {
         teamSlug: widget.team.slug,
         returnUrl: Uri.base.toString(),
       );
-      html.window.location.href = url;
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -702,18 +702,72 @@ class _PlanCard extends StatelessWidget {
 
 class _MemberTile extends StatelessWidget {
   final TeamMember member;
-  final bool isOwner;
   final bool isMe;
+  final bool canManageRoles;
+  final String teamSlug;
+  final VoidCallback onRoleChanged;
 
   const _MemberTile({
     required this.member,
-    required this.isOwner,
     required this.isMe,
+    required this.canManageRoles,
+    required this.teamSlug,
+    required this.onRoleChanged,
   });
+
+  Future<void> _changeRole(BuildContext context, String newRole) async {
+    try {
+      final api = context.read<AuthProvider>().api;
+      await api.updateTeamMemberRole(
+        teamSlug: teamSlug,
+        userId: member.id,
+        role: newRole,
+      );
+      onRoleChanged();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final role = member.role;
+    final isOwnerRole = role == 'owner';
+
+    Widget trailing;
+    if (isOwnerRole) {
+      trailing = Chip(
+        label: const Text('Owner'),
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      );
+    } else if (canManageRoles && !isMe) {
+      trailing = DropdownButton<String>(
+        value: role,
+        underline: const SizedBox.shrink(),
+        isDense: true,
+        items: const [
+          DropdownMenuItem(value: 'member', child: Text('Member')),
+          DropdownMenuItem(value: 'editor', child: Text('Editor')),
+        ],
+        onChanged: (newRole) {
+          if (newRole != null && newRole != role) {
+            _changeRole(context, newRole);
+          }
+        },
+      );
+    } else {
+      trailing = Chip(
+        label: Text(role == 'editor' ? 'Editor' : 'Member'),
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      );
+    }
+
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 4),
       leading: CircleAvatar(
@@ -741,13 +795,7 @@ class _MemberTile extends StatelessWidget {
         ],
       ),
       subtitle: Text(member.email, style: const TextStyle(fontSize: 12)),
-      trailing: isOwner
-          ? Chip(
-              label: const Text('Owner'),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
-            )
-          : null,
+      trailing: trailing,
     );
   }
 }

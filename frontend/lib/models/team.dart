@@ -47,16 +47,19 @@ class TeamMember {
   final String id;
   final String username;
   final String email;
+  final String role; // "owner", "editor", "member"
 
   const TeamMember({
     required this.id,
     required this.username,
     required this.email,
+    this.role = 'member',
   });
 
   factory TeamMember.fromJson(Map<String, dynamic> json) => TeamMember(
         id: json['id'] as String,
         username: json['username'] as String,
         email: json['email'] as String,
+        role: json['role'] as String? ?? 'member',
       );
 }

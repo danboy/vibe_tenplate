@@ -487,7 +487,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                 ),
             ],
           ),
-          floatingActionButton: group == null
+          floatingActionButton: (group == null || !group.canCreate)
               ? null
               : FloatingActionButton.extended(
                   onPressed: () => _showCreateDialog(group),

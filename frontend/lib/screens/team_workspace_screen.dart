@@ -119,6 +119,14 @@ class _TeamWorkspaceScreenState extends State<TeamWorkspaceScreen> {
         final (team, groups) = snap.data!;
         final myId = context.read<AuthProvider>().user!.id;
         final isOwner = team.ownerId == myId;
+        final myRole = isOwner
+            ? 'owner'
+            : (team.members
+                    .where((m) => m.id == myId)
+                    .firstOrNull
+                    ?.role ??
+                'member');
+        final canCreate = myRole == 'owner' || myRole == 'editor';
 
         return Scaffold(
           appBar: AppBar(
@@ -142,11 +150,13 @@ class _TeamWorkspaceScreenState extends State<TeamWorkspaceScreen> {
                 ),
             ],
           ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _showCreateGroupDialog(team),
-            icon: const Icon(Icons.add),
-            label: const Text('New Group'),
-          ),
+          floatingActionButton: canCreate
+              ? FloatingActionButton.extended(
+                  onPressed: () => _showCreateGroupDialog(team),
+                  icon: const Icon(Icons.add),
+                  label: const Text('New Group'),
+                )
+              : null,
           body: groups.isEmpty
               ? Center(
                   child: Column(

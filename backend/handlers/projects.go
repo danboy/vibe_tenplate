@@ -108,6 +108,18 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		return
 	}
 
+	// Only team owners and editors may create projects
+	if group.Team != nil {
+		isTeamOwner := group.Team.OwnerID == userID
+		if !isTeamOwner {
+			var tm models.TeamMember
+			if err := h.db.Where("team_id = ? AND user_id = ?", group.Team.ID, userID).First(&tm).Error; err != nil || tm.Role != "editor" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "only team owners and editors can create projects"})
+				return
+			}
+		}
+	}
+
 	var req CreateProjectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

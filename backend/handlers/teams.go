@@ -34,29 +34,49 @@ func generateTeamJoinCode() string {
 	return string(b)
 }
 
-type TeamResponse struct {
-	ID          string                `json:"id"`
-	Slug        string                `json:"slug"`
-	Name        string                `json:"name"`
-	Description string                `json:"description"`
-	OwnerID     string                `json:"owner_id"`
-	Plan        string                `json:"plan"`
-	IsPrivate   bool                  `json:"is_private"`
-	JoinCode    string                `json:"join_code,omitempty"`
-	MemberCount int                   `json:"member_count"`
-	IsMember    bool                  `json:"is_member"`
-	Members     []models.UserResponse `json:"members,omitempty"`
+type TeamMemberResponse struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Role     string `json:"role"`
 }
 
-func teamToResponse(t models.Team, userID string, includeMembers bool) TeamResponse {
+type TeamResponse struct {
+	ID          string               `json:"id"`
+	Slug        string               `json:"slug"`
+	Name        string               `json:"name"`
+	Description string               `json:"description"`
+	OwnerID     string               `json:"owner_id"`
+	Plan        string               `json:"plan"`
+	IsPrivate   bool                 `json:"is_private"`
+	JoinCode    string               `json:"join_code,omitempty"`
+	MemberCount int                  `json:"member_count"`
+	IsMember    bool                 `json:"is_member"`
+	Members     []TeamMemberResponse `json:"members,omitempty"`
+}
+
+func teamToResponse(t models.Team, userID string, includeMembers bool, roleMap map[string]string) TeamResponse {
 	isMember := false
-	var members []models.UserResponse
+	var members []TeamMemberResponse
 	for _, m := range t.Members {
 		if m.ID == userID {
 			isMember = true
 		}
 		if includeMembers {
-			members = append(members, m.ToResponse())
+			role := "member"
+			if m.ID == t.OwnerID {
+				role = "owner"
+			} else if roleMap != nil {
+				if r, ok := roleMap[m.ID]; ok {
+					role = r
+				}
+			}
+			members = append(members, TeamMemberResponse{
+				ID:       m.ID,
+				Username: m.Username,
+				Email:    m.Email,
+				Role:     role,
+			})
 		}
 	}
 	plan := t.Plan
@@ -153,7 +173,14 @@ func (h *TeamHandler) GetTeam(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, teamToResponse(team, userID, true))
+	var teamMembers []models.TeamMember
+	h.db.Where("team_id = ?", team.ID).Find(&teamMembers)
+	roleMap := map[string]string{}
+	for _, tm := range teamMembers {
+		roleMap[tm.UserID] = tm.Role
+	}
+
+	c.JSON(http.StatusOK, teamToResponse(team, userID, true, roleMap))
 }
 
 func (h *TeamHandler) ListTeams(c *gin.Context) {
@@ -167,7 +194,7 @@ func (h *TeamHandler) ListTeams(c *gin.Context) {
 
 	response := make([]TeamResponse, len(teams))
 	for i, t := range teams {
-		response[i] = teamToResponse(t, userID, false)
+		response[i] = teamToResponse(t, userID, false, nil)
 	}
 	c.JSON(http.StatusOK, response)
 }
@@ -176,32 +203,14 @@ func (h *TeamHandler) ListMyTeams(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
 
 	var user models.User
-	if err := h.db.Preload("Teams").Where("id = ?", userID).First(&user).Error; err != nil {
+	if err := h.db.Preload("Teams.Members").Where("id = ?", userID).First(&user).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
 
 	response := make([]TeamResponse, len(user.Teams))
 	for i, t := range user.Teams {
-		plan := t.Plan
-		if plan == "" {
-			plan = "free"
-		}
-		joinCode := ""
-		if t.OwnerID == userID {
-			joinCode = t.JoinCode
-		}
-		response[i] = TeamResponse{
-			ID:          t.ID,
-			Slug:        t.Slug,
-			Name:        t.Name,
-			Description: t.Description,
-			OwnerID:     t.OwnerID,
-			Plan:        plan,
-			IsPrivate:   t.IsPrivate,
-			JoinCode:    joinCode,
-			IsMember:    true,
-		}
+		response[i] = teamToResponse(t, userID, false, nil)
 	}
 
 	c.JSON(http.StatusOK, response)
@@ -316,6 +325,59 @@ func (h *TeamHandler) LeaveTeam(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "successfully left team"})
+}
+
+// ── Roles ────────────────────────────────────────────────────────────────────
+
+type UpdateMemberRoleRequest struct {
+	Role string `json:"role" binding:"required,oneof=member editor"`
+}
+
+func (h *TeamHandler) UpdateMemberRole(c *gin.Context) {
+	userID := c.MustGet("userID").(string)
+	teamSlug := c.Param("id")
+	targetUserID := c.Param("userId")
+
+	var req UpdateMemberRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be 'member' or 'editor'"})
+		return
+	}
+
+	var team models.Team
+	if err := h.db.Where("slug = ?", teamSlug).First(&team).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "team not found"})
+		return
+	}
+
+	// Only owner or editors may manage roles
+	isOwner := team.OwnerID == userID
+	if !isOwner {
+		var callerRole models.TeamMember
+		if err := h.db.Where("team_id = ? AND user_id = ?", team.ID, userID).First(&callerRole).Error; err != nil || callerRole.Role != "editor" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only owners and editors can change member roles"})
+			return
+		}
+	}
+
+	if targetUserID == team.OwnerID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot change the owner's role"})
+		return
+	}
+
+	result := h.db.Model(&models.TeamMember{}).
+		Where("team_id = ? AND user_id = ?", team.ID, targetUserID).
+		Update("role", req.Role)
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update role"})
+		return
+	}
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "member not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "role updated"})
 }
 
 // ── Billing ──────────────────────────────────────────────────────────────────

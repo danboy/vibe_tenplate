@@ -79,6 +79,7 @@ func main() {
 			protected.GET("/teams/:id", teamHandler.GetTeam)
 			protected.POST("/teams/:id/join", teamHandler.JoinTeam)
 			protected.POST("/teams/:id/leave", teamHandler.LeaveTeam)
+			protected.PATCH("/teams/:id/members/:userId", teamHandler.UpdateMemberRole)
 			protected.GET("/teams/:id/groups", groupHandler.ListTeamGroups)
 			protected.POST("/teams/:id/checkout", teamHandler.CreateCheckoutSession)
 			protected.POST("/teams/:id/billing-portal", teamHandler.CreatePortalSession)

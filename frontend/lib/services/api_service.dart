@@ -202,6 +202,18 @@ class ApiService {
     await _parseMap(response);
   }
 
+  Future<void> updateTeamMemberRole({
+    required String teamSlug,
+    required String userId,
+    required String role,
+  }) async {
+    final response = await _patch(
+      Uri.parse('$baseUrl/teams/$teamSlug/members/$userId'),
+      body: json.encode({'role': role}),
+    );
+    await _parseMap(response);
+  }
+
   Future<List<Group>> listTeamGroups(String teamSlug) async {
     final response = await _get(Uri.parse('$baseUrl/teams/$teamSlug/groups'));
     final list = await _parseList(response);

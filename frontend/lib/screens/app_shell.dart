@@ -239,19 +239,21 @@ class _SidebarContentState extends State<_SidebarContent> {
             ),
           ),
 
-        // ── Teams nav item ────────────────────────────────────────────────
-        const SizedBox(height: 8),
-        _SidebarItem(
-          icon: Icons.group_work_outlined,
-          selectedIcon: Icons.group_work,
-          label: 'Teams',
-          selected: widget.onTeamsList,
-          expanded: widget.expanded,
-          onTap: () {
-            context.go('/teams');
-            widget.onItemTap?.call();
-          },
-        ),
+        // ── Teams nav item (hidden once a team is active) ─────────────────
+        if (_loadedForTeam == null) ...[
+          const SizedBox(height: 8),
+          _SidebarItem(
+            icon: Icons.group_work_outlined,
+            selectedIcon: Icons.group_work,
+            label: 'Teams',
+            selected: widget.onTeamsList,
+            expanded: widget.expanded,
+            onTap: () {
+              context.go('/teams');
+              widget.onItemTap?.call();
+            },
+          ),
+        ],
 
         // ── Groups list ────────────────────────────────────────────────────
         if (groups.isNotEmpty) ...[

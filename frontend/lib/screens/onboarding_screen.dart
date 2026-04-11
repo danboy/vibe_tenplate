@@ -1,7 +1,5 @@
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
-
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -60,7 +58,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       );
 
       auth.clearPendingPlan();
-      html.window.location.href = checkoutUrl;
+      await launchUrl(Uri.parse(checkoutUrl), mode: LaunchMode.externalApplication);
     } catch (e) {
       if (mounted) {
         setState(() {

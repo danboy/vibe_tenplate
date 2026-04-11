@@ -16,7 +16,7 @@ type Group struct {
 	Slug        string         `json:"slug"        gorm:"uniqueIndex;not null;type:text"`
 	Description string         `json:"description"`
 	OwnerID     string         `json:"owner_id"    gorm:"type:text"`
-	TeamID      string         `json:"team_id"     gorm:"type:text;index"`
+	TeamID      *string        `json:"team_id"     gorm:"type:text;index"`
 	Team        *Team          `json:"team,omitempty"`
 	Members     []User         `json:"members,omitempty" gorm:"many2many:user_groups;"`
 }

@@ -7,6 +7,7 @@ class Group {
   final int memberCount;
   final bool isMember;
   final String plan;
+  final String myTeamRole; // "owner", "editor", "member", or ""
   final List<GroupMember> members;
 
   const Group({
@@ -18,8 +19,11 @@ class Group {
     this.memberCount = 0,
     this.isMember = false,
     this.plan = 'free',
+    this.myTeamRole = '',
     this.members = const [],
   });
+
+  bool get canCreate => myTeamRole == 'owner' || myTeamRole == 'editor';
 
   factory Group.fromJson(Map<String, dynamic> json) => Group(
         id: json['id'] as String,
@@ -30,6 +34,7 @@ class Group {
         memberCount: json['member_count'] as int? ?? 0,
         isMember: json['is_member'] as bool? ?? false,
         plan: json['plan'] as String? ?? 'free',
+        myTeamRole: json['my_team_role'] as String? ?? '',
         members: (json['members'] as List<dynamic>?)
                 ?.map((m) => GroupMember.fromJson(m as Map<String, dynamic>))
                 .toList() ??

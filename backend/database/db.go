@@ -21,6 +21,13 @@ func InitDB() *gorm.DB {
 		log.Fatal("failed to connect to database:", err)
 	}
 
+	if err := db.SetupJoinTable(&models.Team{}, "Members", &models.TeamMember{}); err != nil {
+		log.Fatal("failed to setup team join table:", err)
+	}
+	if err := db.SetupJoinTable(&models.User{}, "Teams", &models.TeamMember{}); err != nil {
+		log.Fatal("failed to setup user join table:", err)
+	}
+
 	if err := db.AutoMigrate(&models.User{}, &models.Team{}, &models.Group{}, &models.Project{}, &models.StickyNote{}, &models.NoteVote{}); err != nil {
 		log.Fatal("failed to migrate database:", err)
 	}
