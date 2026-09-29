@@ -8,10 +8,11 @@ import 'screens/group_workspace_screen.dart';
 import 'screens/group_detail_screen.dart';
 import 'screens/join_screen.dart';
 import 'screens/onboarding_screen.dart';
-import 'screens/project_slideshow_screen.dart';
+import 'screens/brainstorm_slideshow_screen.dart';
 import 'screens/teams_screen.dart';
 import 'screens/team_workspace_screen.dart';
 import 'screens/team_detail_screen.dart';
+import 'screens/admin_screen.dart';
 
 GoRouter createRouter(AuthProvider auth) => GoRouter(
       refreshListenable: auth,
@@ -23,7 +24,7 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
             loc.startsWith('/auth/login') || loc.startsWith('/auth/register');
         // Slideshow handles guest access internally — don't redirect to login
         final isSlideshow =
-            loc.contains('/projects/') && loc.startsWith('/groups/');
+            loc.contains('/brainstorms/') && loc.startsWith('/groups/');
 
         if (!auth.isAuthenticated && !isOnAuthPage && !isSlideshow) {
           final dest = Uri.encodeComponent(state.uri.toString());
@@ -64,10 +65,10 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
 
         // Slideshow is full-screen — outside the shell
         GoRoute(
-          path: '/groups/:groupSlug/projects/:projectSlug',
-          builder: (_, state) => ProjectSlideshowScreen(
+          path: '/groups/:groupSlug/brainstorms/:brainstormSlug',
+          builder: (_, state) => BrainstormSlideshowScreen(
             groupSlug: state.pathParameters['groupSlug']!,
-            projectSlug: state.pathParameters['projectSlug']!,
+            brainstormSlug: state.pathParameters['brainstormSlug']!,
           ),
         ),
 
@@ -96,6 +97,10 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
             GoRoute(
               path: '/profile',
               builder: (_, __) => const ProfileScreen(),
+            ),
+            GoRoute(
+              path: '/admin',
+              builder: (_, __) => const AdminScreen(),
             ),
             GoRoute(
               path: '/groups/:groupSlug',

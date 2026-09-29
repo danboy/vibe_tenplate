@@ -229,7 +229,7 @@ class _MemberTile extends StatelessWidget {
       leading: CircleAvatar(
         backgroundColor: isMe
             ? theme.colorScheme.primary
-            : theme.colorScheme.surfaceVariant,
+            : theme.colorScheme.surfaceContainerHighest,
         child: Text(
           member.username[0].toUpperCase(),
           style: TextStyle(
@@ -252,8 +252,8 @@ class _MemberTile extends StatelessWidget {
       ),
       subtitle: Text(member.email, style: const TextStyle(fontSize: 12)),
       trailing: isOwner
-          ? Chip(
-              label: const Text('Owner'),
+          ? const Chip(
+              label: Text('Owner'),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
             )

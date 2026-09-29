@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -43,8 +42,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
       _search = value;
       if (value.isEmpty) {
         _allTeamsFuture = null;
-      } else if (_allTeamsFuture == null) {
-        _allTeamsFuture = api.listTeams();
+      } else {
+        _allTeamsFuture ??= api.listTeams();
       }
     });
   }

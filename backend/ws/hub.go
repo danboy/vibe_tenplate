@@ -26,9 +26,9 @@ func buildMessage(msgType string, payload any) ([]byte, error) {
 	return json.Marshal(Message{Type: msgType, Payload: p})
 }
 
-// Hub maintains the set of active clients for one project and broadcasts messages.
+// Hub maintains the set of active clients for one brainstorm and broadcasts messages.
 type Hub struct {
-	projectID    string
+	brainstormID    string
 	clients      map[*Client]bool
 	broadcast    chan []byte
 	register     chan *Client
@@ -41,9 +41,9 @@ type Hub struct {
 	clientCount  atomic.Int32
 }
 
-func newHub(projectID string, db *gorm.DB) *Hub {
+func newHub(brainstormID string, db *gorm.DB) *Hub {
 	h := &Hub{
-		projectID:   projectID,
+		brainstormID:   brainstormID,
 		clients:     make(map[*Client]bool),
 		broadcast:   make(chan []byte, 256),
 		register:    make(chan *Client),
@@ -102,19 +102,19 @@ func (h *Hub) run() {
 // Must be called from the run() goroutine so clients map access is safe.
 func (h *Hub) sendInit(client *Client) {
 	var notes []models.StickyNote
-	h.db.Where("project_id = ?", h.projectID).Find(&notes)
+	h.db.Where("brainstorm_id = ?", h.brainstormID).Find(&notes)
 	if notes == nil {
 		notes = []models.StickyNote{}
 	}
 
 	var votes []models.NoteVote
-	h.db.Where("project_id = ?", h.projectID).Find(&votes)
+	h.db.Where("brainstorm_id = ?", h.brainstormID).Find(&votes)
 	if votes == nil {
 		votes = []models.NoteVote{}
 	}
 
-	var project models.Project
-	h.db.Where("id = ?", h.projectID).First(&project)
+	var brainstorm models.Brainstorm
+	h.db.Where("id = ?", h.brainstormID).First(&brainstorm)
 
 	h.mu.Lock()
 	slide := h.currentSlide
@@ -124,7 +124,7 @@ func (h *Hub) sendInit(client *Client) {
 		"notes":              notes,
 		"slide":              slide,
 		"votes":              votes,
-		"problem_statement":  project.ProblemStatement,
+		"problem_statement":  brainstorm.ProblemStatement,
 	})
 	if err != nil {
 		log.Println("ws: sendInit build error:", err)
@@ -157,17 +157,17 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 		if json.Unmarshal(msg.Payload, &p) != nil {
 			return
 		}
-		var project models.Project
-		if h.db.Where("id = ?", h.projectID).First(&project).Error != nil {
+		var brainstorm models.Brainstorm
+		if h.db.Where("id = ?", h.brainstormID).First(&brainstorm).Error != nil {
 			return
 		}
-		authorized := (project.PresenterID != nil && *project.PresenterID == client.userID) ||
-			(project.PresenterID == nil && project.CreatedBy == client.userID)
+		authorized := (brainstorm.PresenterID != nil && *brainstorm.PresenterID == client.userID) ||
+			(brainstorm.PresenterID == nil && brainstorm.CreatedBy == client.userID)
 		if !authorized {
 			return
 		}
-		h.db.Model(&models.Project{}).
-			Where("id = ?", h.projectID).
+		h.db.Model(&models.Brainstorm{}).
+			Where("id = ?", h.brainstormID).
 			Update("problem_statement", p.Text)
 		if data, err := buildMessage("problem_statement_update", map[string]any{"text": p.Text}); err == nil {
 			h.broadcast <- data
@@ -184,7 +184,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			return
 		}
 		note := models.StickyNote{
-			ProjectID: h.projectID,
+			BrainstormID: h.brainstormID,
 			Content:   p.Content,
 			PosX:      p.PosX,
 			PosY:      p.PosY,
@@ -207,7 +207,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			return
 		}
 		h.db.Model(&models.StickyNote{}).
-			Where("id = ? AND project_id = ?", p.ID, h.projectID).
+			Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).
 			Updates(map[string]any{"pos_x": p.PosX, "pos_y": p.PosY})
 		if data, err := buildMessage("note_move", p); err == nil {
 			h.broadcast <- data
@@ -222,7 +222,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			return
 		}
 		h.db.Model(&models.StickyNote{}).
-			Where("id = ? AND project_id = ?", p.ID, h.projectID).
+			Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).
 			Update("content", p.Content)
 		if data, err := buildMessage("note_update", p); err == nil {
 			h.broadcast <- data
@@ -235,7 +235,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 		if json.Unmarshal(msg.Payload, &p) != nil {
 			return
 		}
-		h.db.Where("id = ? AND project_id = ?", p.ID, h.projectID).Delete(&models.StickyNote{})
+		h.db.Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).Delete(&models.StickyNote{})
 		if data, err := buildMessage("note_delete", p); err == nil {
 			h.broadcast <- data
 		}
@@ -289,7 +289,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			return
 		}
 		res := h.db.Model(&models.StickyNote{}).
-			Where("id = ? AND project_id = ?", p.ID, h.projectID).
+			Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).
 			Updates(map[string]any{"matrix_cost": p.Cost, "matrix_value": p.Value})
 		log.Printf("matrix_move: id=%s cost=%.3f value=%.3f db_rows=%d db_err=%v clients=%d",
 			p.ID, p.Cost, p.Value, res.RowsAffected, res.Error, len(h.clients))
@@ -308,15 +308,15 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			log.Printf("slide_change: unmarshal failed")
 			return
 		}
-		var project models.Project
-		if h.db.Where("id = ?", h.projectID).First(&project).Error != nil {
-			log.Printf("slide_change: project not found %s", h.projectID)
+		var brainstorm models.Brainstorm
+		if h.db.Where("id = ?", h.brainstormID).First(&brainstorm).Error != nil {
+			log.Printf("slide_change: brainstorm not found %s", h.brainstormID)
 			return
 		}
-		authorized := (project.PresenterID != nil && *project.PresenterID == client.userID) ||
-			(project.PresenterID == nil && project.CreatedBy == client.userID)
+		authorized := (brainstorm.PresenterID != nil && *brainstorm.PresenterID == client.userID) ||
+			(brainstorm.PresenterID == nil && brainstorm.CreatedBy == client.userID)
 		log.Printf("slide_change: slide=%d user=%s createdBy=%s presenterID=%v authorized=%v",
-			p.Slide, client.userID, project.CreatedBy, project.PresenterID, authorized)
+			p.Slide, client.userID, brainstorm.CreatedBy, brainstorm.PresenterID, authorized)
 		if !authorized {
 			return
 		}
@@ -338,7 +338,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 		}
 
 		var target models.StickyNote
-		if h.db.Where("id = ? AND project_id = ?", p.TargetID, h.projectID).First(&target).Error != nil {
+		if h.db.Where("id = ? AND brainstorm_id = ?", p.TargetID, h.brainstormID).First(&target).Error != nil {
 			return
 		}
 
@@ -352,11 +352,11 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 		} else {
 			// Neither note is grouped — create a new group note above them.
 			var dragged models.StickyNote
-			if h.db.Where("id = ? AND project_id = ?", p.DraggedID, h.projectID).First(&dragged).Error != nil {
+			if h.db.Where("id = ? AND brainstorm_id = ?", p.DraggedID, h.brainstormID).First(&dragged).Error != nil {
 				return
 			}
 			groupNote := models.StickyNote{
-				ProjectID: h.projectID,
+				BrainstormID: h.brainstormID,
 				Content:   "",
 				PosX:      (dragged.PosX + target.PosX) / 2,
 				PosY:      math.Min(dragged.PosY, target.PosY) - 110,
@@ -374,7 +374,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			}
 			// Make target a child of the new group note.
 			h.db.Model(&models.StickyNote{}).
-				Where("id = ? AND project_id = ?", p.TargetID, h.projectID).
+				Where("id = ? AND brainstorm_id = ?", p.TargetID, h.brainstormID).
 				Update("parent_id", parentID)
 			if data, err := buildMessage("note_group", map[string]any{"id": p.TargetID, "parent_id": parentID}); err == nil {
 				h.broadcast <- data
@@ -383,7 +383,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 
 		// Make dragged note a child.
 		h.db.Model(&models.StickyNote{}).
-			Where("id = ? AND project_id = ?", p.DraggedID, h.projectID).
+			Where("id = ? AND brainstorm_id = ?", p.DraggedID, h.brainstormID).
 			Update("parent_id", parentID)
 		if data, err := buildMessage("note_group", map[string]any{"id": p.DraggedID, "parent_id": parentID}); err == nil {
 			h.broadcast <- data
@@ -398,7 +398,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			return
 		}
 		var note models.StickyNote
-		if h.db.Where("id = ? AND project_id = ?", p.ID, h.projectID).First(&note).Error != nil {
+		if h.db.Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).First(&note).Error != nil {
 			return
 		}
 		if note.ParentID == nil {
@@ -406,7 +406,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 		}
 		parentID := *note.ParentID
 		h.db.Model(&models.StickyNote{}).
-			Where("id = ? AND project_id = ?", p.ID, h.projectID).
+			Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).
 			Update("parent_id", gorm.Expr("NULL"))
 		if data, err := buildMessage("note_group", map[string]any{"id": p.ID, "parent_id": nil}); err == nil {
 			h.broadcast <- data
@@ -414,10 +414,10 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 		// If the group note is now empty, delete it.
 		var remaining int64
 		h.db.Model(&models.StickyNote{}).
-			Where("parent_id = ? AND project_id = ?", parentID, h.projectID).
+			Where("parent_id = ? AND brainstorm_id = ?", parentID, h.brainstormID).
 			Count(&remaining)
 		if remaining == 0 {
-			h.db.Where("id = ? AND project_id = ?", parentID, h.projectID).Delete(&models.StickyNote{})
+			h.db.Where("id = ? AND brainstorm_id = ?", parentID, h.brainstormID).Delete(&models.StickyNote{})
 			if data, err := buildMessage("note_delete", map[string]any{"id": parentID}); err == nil {
 				h.broadcast <- data
 			}
@@ -436,9 +436,9 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 		if p.Count < 0 {
 			p.Count = 0
 		}
-		// Validate total votes for this user across the project won't exceed 4.
+		// Validate total votes for this user across the brainstorm won't exceed 4.
 		var otherVotes []models.NoteVote
-		h.db.Where("project_id = ? AND user_id = ? AND note_id != ?", h.projectID, client.userID, p.NoteID).
+		h.db.Where("brainstorm_id = ? AND user_id = ? AND note_id != ?", h.brainstormID, client.userID, p.NoteID).
 			Find(&otherVotes)
 		total := 0
 		for _, v := range otherVotes {
@@ -449,11 +449,11 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 		}
 		// Upsert the vote for this user+note.
 		var vote models.NoteVote
-		err := h.db.Where("project_id = ? AND note_id = ? AND user_id = ?",
-			h.projectID, p.NoteID, client.userID).First(&vote).Error
+		err := h.db.Where("brainstorm_id = ? AND note_id = ? AND user_id = ?",
+			h.brainstormID, p.NoteID, client.userID).First(&vote).Error
 		if err != nil {
 			vote = models.NoteVote{
-				ProjectID: h.projectID,
+				BrainstormID: h.brainstormID,
 				NoteID:    p.NoteID,
 				UserID:    client.userID,
 				Count:     p.Count,
@@ -476,11 +476,11 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 // directly below the group note header. Called whenever membership changes.
 func (h *Hub) restackGroup(parentID string) {
 	var groupNote models.StickyNote
-	if h.db.Where("id = ? AND project_id = ?", parentID, h.projectID).First(&groupNote).Error != nil {
+	if h.db.Where("id = ? AND brainstorm_id = ?", parentID, h.brainstormID).First(&groupNote).Error != nil {
 		return
 	}
 	var children []models.StickyNote
-	h.db.Where("parent_id = ? AND project_id = ?", parentID, h.projectID).
+	h.db.Where("parent_id = ? AND brainstorm_id = ?", parentID, h.brainstormID).
 		Order("created_at asc").
 		Find(&children)
 
@@ -492,7 +492,7 @@ func (h *Hub) restackGroup(parentID string) {
 		newX := groupNote.PosX
 		newY := groupNote.PosY - float64(i+1)*noteHeight
 		h.db.Model(&models.StickyNote{}).
-			Where("id = ? AND project_id = ?", child.ID, h.projectID).
+			Where("id = ? AND brainstorm_id = ?", child.ID, h.brainstormID).
 			Updates(map[string]any{"pos_x": newX, "pos_y": newY})
 		if data, err := buildMessage("note_move", map[string]any{
 			"id": child.ID, "pos_x": newX, "pos_y": newY,
@@ -502,7 +502,7 @@ func (h *Hub) restackGroup(parentID string) {
 	}
 }
 
-// Manager keeps one hub per project, creating on demand.
+// Manager keeps one hub per brainstorm, creating on demand.
 var manager = &hubManager{hubs: make(map[string]*Hub)}
 
 type hubManager struct {
@@ -510,14 +510,14 @@ type hubManager struct {
 	hubs map[string]*Hub
 }
 
-func GetHub(projectID string, db *gorm.DB) *Hub {
+func GetHub(brainstormID string, db *gorm.DB) *Hub {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
-	if h, ok := manager.hubs[projectID]; ok {
+	if h, ok := manager.hubs[brainstormID]; ok {
 		return h
 	}
-	h := newHub(projectID, db)
-	manager.hubs[projectID] = h
+	h := newHub(brainstormID, db)
+	manager.hubs[brainstormID] = h
 	return h
 }
 
@@ -526,11 +526,11 @@ func (h *Hub) Register(client *Client) {
 	h.register <- client
 }
 
-// GetClientCount returns the number of active WebSocket connections for a project.
-// Returns 0 if no hub exists for the project.
-func GetClientCount(projectID string) int {
+// GetClientCount returns the number of active WebSocket connections for a brainstorm.
+// Returns 0 if no hub exists for the brainstorm.
+func GetClientCount(brainstormID string) int {
 	manager.mu.Lock()
-	h, ok := manager.hubs[projectID]
+	h, ok := manager.hubs[brainstormID]
 	manager.mu.Unlock()
 	if !ok {
 		return 0
@@ -539,9 +539,9 @@ func GetClientCount(projectID string) int {
 }
 
 // NotifyPresenter broadcasts a presenter_change message to an existing hub (no-op if none).
-func NotifyPresenter(projectID string, presenterID *string, presenterUsername *string) {
+func NotifyPresenter(brainstormID string, presenterID *string, presenterUsername *string) {
 	manager.mu.Lock()
-	h, ok := manager.hubs[projectID]
+	h, ok := manager.hubs[brainstormID]
 	manager.mu.Unlock()
 	if !ok {
 		return

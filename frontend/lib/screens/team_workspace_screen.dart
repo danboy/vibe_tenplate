@@ -132,10 +132,7 @@ class _TeamWorkspaceScreenState extends State<TeamWorkspaceScreen> {
           appBar: AppBar(
             title: Text(team.name),
             centerTitle: false,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => context.go('/teams'),
-            ),
+            automaticallyImplyLeading: false,
             actions: [
               if (isOwner)
                 IconButton(
@@ -169,7 +166,7 @@ class _TeamWorkspaceScreenState extends State<TeamWorkspaceScreen> {
                       const Text('No groups yet',
                           style: TextStyle(fontSize: 16)),
                       const SizedBox(height: 8),
-                      const Text('Create a group to start organising projects',
+                      const Text('Create a group to start organising brainstorms',
                           style: TextStyle(color: Colors.grey),
                           textAlign: TextAlign.center),
                     ],

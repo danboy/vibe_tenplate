@@ -11,32 +11,32 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/group.dart';
-import '../models/project.dart';
+import '../models/brainstorm.dart';
 import '../models/sticky_note.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 
-class ProjectSlideshowScreen extends StatefulWidget {
+class BrainstormSlideshowScreen extends StatefulWidget {
   final String groupSlug;
-  final String projectSlug;
+  final String brainstormSlug;
 
-  const ProjectSlideshowScreen({
+  const BrainstormSlideshowScreen({
     super.key,
     required this.groupSlug,
-    required this.projectSlug,
+    required this.brainstormSlug,
   });
 
   @override
-  State<ProjectSlideshowScreen> createState() =>
-      _ProjectSlideshowScreenState();
+  State<BrainstormSlideshowScreen> createState() =>
+      _BrainstormSlideshowScreenState();
 }
 
-class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
+class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
   WebSocketChannel? _channel;
   List<StickyNote> _notes = [];
   bool _connected = false;
   final _rng = Random();
-  Project? _project;
+  Brainstorm? _brainstorm;
   Group? _group;
   bool _loginRequired = false;
   bool _isGuest = false;
@@ -140,13 +140,13 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
       try {
         final api = auth.api;
         final results = await Future.wait([
-          api.getProject(groupSlug: widget.groupSlug, projectSlug: widget.projectSlug),
+          api.getBrainstorm(groupSlug: widget.groupSlug, brainstormSlug: widget.brainstormSlug),
           api.getGroup(widget.groupSlug),
         ]);
         if (!mounted) return;
-        final project = results[0] as Project;
+        final project = results[0] as Brainstorm;
         setState(() {
-          _project = project;
+          _brainstorm = project;
           _group = results[1] as Group;
           if (!project.enableProblem && _slide == 0) _slide = 1;
         });
@@ -155,8 +155,8 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
     } else {
       // Unauthenticated — check if guests are enabled for this project.
       try {
-        final info = await ApiService().getGuestProject(
-            widget.groupSlug, widget.projectSlug);
+        final info = await const ApiService().getGuestBrainstorm(
+            widget.groupSlug, widget.brainstormSlug);
         if (!mounted) return;
         if (info['guests_enabled'] != true) {
           setState(() => _loginRequired = true);
@@ -167,15 +167,15 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
           if (!mounted) return;
           final name = await _showGuestNameDialog();
           if (name == null || !mounted) return;
-          final token = await ApiService()
-              .guestJoin(info['id'] as String, name);
+          final token = await const ApiService()
+              .guestJoinBrainstorm(info['id'] as String, name);
           if (!mounted) return;
           setState(() {
             _isGuest = true;
             // Minimal project info for guests
-            _project = Project(
+            _brainstorm = Brainstorm(
               id: info['id'] as String,
-              slug: widget.projectSlug,
+              slug: widget.brainstormSlug,
               name: info['name'] as String,
               description: '',
               groupId: '',
@@ -183,7 +183,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
               createdAt: DateTime.now(),
               enableProblem: info['enable_problem'] as bool? ?? true,
             );
-            if (_project?.enableProblem == false && _slide == 0) _slide = 1;
+            if (_brainstorm?.enableProblem == false && _slide == 0) _slide = 1;
           });
           _connect(info['id'] as String, guestToken: token);
         });
@@ -240,22 +240,22 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
   bool get _isPresenter {
     if (_isGuest) return false;
     final userId = context.read<AuthProvider>().user?.id;
-    if (userId == null || _project == null) return false;
-    if (_project!.presenterId != null) return userId == _project!.presenterId;
-    return userId == _project!.createdBy;
+    if (userId == null || _brainstorm == null) return false;
+    if (_brainstorm!.presenterId != null) return userId == _brainstorm!.presenterId;
+    return userId == _brainstorm!.createdBy;
   }
 
   bool get _canAssignPresenter {
     if (_isGuest) return false;
     final userId = context.read<AuthProvider>().user?.id;
-    if (userId == null || _project == null) return false;
-    return userId == _project!.createdBy || userId == _group?.ownerId;
+    if (userId == null || _brainstorm == null) return false;
+    return userId == _brainstorm!.createdBy || userId == _group?.ownerId;
   }
 
   void _connect(String projectId, {String? guestToken}) {
     final token = guestToken ?? context.read<AuthProvider>().token;
     final uri = Uri.parse(
-        '${ApiService.wsBaseUrl}/ws/projects/$projectId?token=$token');
+        '${ApiService.wsBaseUrl}/ws/brainstorms/$projectId?token=$token');
     _channel = WebSocketChannel.connect(uri);
     setState(() => _connected = true);
     _channel!.stream.listen(
@@ -354,12 +354,12 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
           _problemStatement = (payload['text'] as String?) ?? '';
 
         case 'presenter_change':
-          if (_project != null) {
+          if (_brainstorm != null) {
             final pid = payload['presenter_id'] as String?;
             final pname = payload['presenter_username'] as String?;
-            _project = pid == null
-                ? _project!.copyWith(clearPresenter: true)
-                : _project!.copyWith(presenterId: pid, presenterUsername: pname);
+            _brainstorm = pid == null
+                ? _brainstorm!.copyWith(clearPresenter: true)
+                : _brainstorm!.copyWith(presenterId: pid, presenterUsername: pname);
           }
 
         case 'vote':
@@ -466,9 +466,9 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
   }
 
   Future<void> _showSetPresenterDialog() async {
-    if (_group == null || _project == null) return;
+    if (_group == null || _brainstorm == null) return;
     final members = _group!.members;
-    String? selected = _project!.presenterId;
+    String? selected = _brainstorm!.presenterId;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -477,26 +477,26 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
           title: const Text('Set Presenter'),
           content: SizedBox(
             width: 320,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                RadioListTile<String?>(
-                  title: Text(_project!.creatorUsername != null
-                      ? '${_project!.creatorUsername} (creator)'
-                      : 'Project creator (default)'),
-                  value: null,
-                  groupValue: selected,
-                  onChanged: (v) => setLocal(() => selected = v),
-                ),
-                ...members.map((m) => RadioListTile<String?>(
-                      title: Text(m.username),
-                      subtitle: Text(m.email,
-                          style: const TextStyle(fontSize: 11)),
-                      value: m.id,
-                      groupValue: selected,
-                      onChanged: (v) => setLocal(() => selected = v),
-                    )),
-              ],
+            child: RadioGroup<String?>(
+              groupValue: selected,
+              onChanged: (v) => setLocal(() => selected = v),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RadioListTile<String?>(
+                    title: Text(_brainstorm!.creatorUsername != null
+                        ? '${_brainstorm!.creatorUsername} (creator)'
+                        : 'Brainstorm creator (default)'),
+                    value: null,
+                  ),
+                  ...members.map((m) => RadioListTile<String?>(
+                        title: Text(m.username),
+                        subtitle: Text(m.email,
+                            style: const TextStyle(fontSize: 11)),
+                        value: m.id,
+                      )),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -516,10 +516,10 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
       final api = context.read<AuthProvider>().api;
       final updated = await api.setPresenter(
         groupSlug: widget.groupSlug,
-        projectSlug: widget.projectSlug,
+        brainstormSlug: widget.brainstormSlug,
         userId: selected,
       );
-      setState(() => _project = updated);
+      setState(() => _brainstorm = updated);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -737,16 +737,16 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
 
     final isProblemMode = _slide == 0;
     final isGroupingMode = _slide == 2;
-    final enableProblem = _project?.enableProblem ?? true;
-    final enableVote = _project?.enableVote ?? false;
-    final enablePrioritise = _project?.enablePrioritise ?? false;
+    final enableProblem = _brainstorm?.enableProblem ?? true;
+    final enableVote = _brainstorm?.enableVote ?? false;
+    final enablePrioritise = _brainstorm?.enablePrioritise ?? false;
     final isVotingMode = _slide == 3 && enableVote;
     final isCostValueMode = _slide == 4 && enablePrioritise;
     final isPresenter = _isPresenter;
     final canAssign = _canAssignPresenter;
     final currentUserId = context.read<AuthProvider>().user?.id ?? '';
-    final presenterLabel = _project?.presenterUsername
-        ?? _project?.creatorUsername
+    final presenterLabel = _brainstorm?.presenterUsername
+        ?? _brainstorm?.creatorUsername
         ?? '';
 
     final enabledSlides = [
@@ -767,7 +767,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(_project?.name ?? '…'),
+            Text(_brainstorm?.name ?? '…'),
             if (presenterLabel.isNotEmpty)
               Text(
                 isPresenter ? 'You are presenting' : 'Presenter: $presenterLabel',
@@ -918,7 +918,7 @@ class _ProjectSlideshowScreenState extends State<ProjectSlideshowScreen> {
                 if (_showInterstitial)
                   _SlideInterstitial(
                     slide: _slide,
-                    customDescription: _project?.interstitialForSlide(_slide),
+                    customDescription: _brainstorm?.interstitialForSlide(_slide),
                     onDismiss: () {
                       setState(() => _dismissedInterstitials.add(_slide));
                       _saveDismissed();
@@ -3113,9 +3113,9 @@ class _StarTray extends StatelessWidget {
                 if (!isAvailable) return star;
                 return Draggable<bool>(
                   data: true,
-                  feedback: Material(
+                  feedback: const Material(
                     color: Colors.transparent,
-                    child: const Icon(Icons.star_rounded,
+                    child: Icon(Icons.star_rounded,
                         color: Colors.amber, size: 38),
                   ),
                   childWhenDragging: Icon(Icons.star_outline_rounded,

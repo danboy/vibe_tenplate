@@ -51,7 +51,7 @@ class AuthProvider extends ChangeNotifier {
     required String password,
     String? plan,
   }) async {
-    final result = await ApiService().register(
+    final result = await const ApiService().register(
       username: username,
       email: email,
       password: password,
@@ -64,7 +64,8 @@ class AuthProvider extends ChangeNotifier {
     required String email,
     required String password,
   }) async {
-    final result = await ApiService().login(email: email, password: password);
+    final result =
+        await const ApiService().login(email: email, password: password);
     await _saveSession(result.token, result.user);
   }
 

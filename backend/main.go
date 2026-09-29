@@ -39,13 +39,14 @@ func main() {
 	authHandler := handlers.NewAuthHandler(db)
 	groupHandler := handlers.NewGroupHandler(db)
 	teamHandler := handlers.NewTeamHandler(db)
-	projectHandler := handlers.NewProjectHandler(db)
+	brainstormHandler := handlers.NewBrainstormHandler(db)
 	slideshowHandler := handlers.NewSlideshowHandler(db)
 	guestHandler := handlers.NewGuestHandler(db)
 	billingHandler := handlers.NewBillingHandler(db)
+	adminHandler := handlers.NewAdminHandler(db)
 
 	// WebSocket — auth is handled inside the handler via ?token= query param
-	r.GET("/ws/projects/:id", slideshowHandler.Connect)
+	r.GET("/ws/brainstorms/:id", slideshowHandler.Connect)
 
 	// Stripe webhook — must be outside auth middleware; reads raw body for sig verification
 	r.POST("/stripe/webhook", billingHandler.HandleWebhook)
@@ -61,8 +62,8 @@ func main() {
 		// Public guest endpoints — no auth required
 		guest := api.Group("/guest")
 		{
-			guest.GET("/groups/:id/projects/:pid", guestHandler.GetGuestProject)
-			guest.POST("/projects/:id/join", guestHandler.GuestJoin)
+			guest.GET("/groups/:id/brainstorms/:bid", guestHandler.GetGuestBrainstorm)
+			guest.POST("/brainstorms/:id/join", guestHandler.GuestJoin)
 		}
 
 		protected := api.Group("/")
@@ -91,13 +92,21 @@ func main() {
 			protected.POST("/groups/:id/join", groupHandler.JoinGroup)
 			protected.POST("/groups/:id/leave", groupHandler.LeaveGroup)
 
-			// Projects
-			protected.GET("/groups/:id/projects", projectHandler.ListProjects)
-			protected.POST("/groups/:id/projects", projectHandler.CreateProject)
-			protected.GET("/groups/:id/projects/:pid", projectHandler.GetProject)
-			protected.PATCH("/groups/:id/projects/:pid", projectHandler.UpdateProject)
-			protected.DELETE("/groups/:id/projects/:pid", projectHandler.DeleteProject)
-			protected.PUT("/groups/:id/projects/:pid/presenter", projectHandler.SetPresenter)
+			// Brainstorms
+			protected.GET("/groups/:id/brainstorms", brainstormHandler.ListBrainstorms)
+			protected.POST("/groups/:id/brainstorms", brainstormHandler.CreateBrainstorm)
+			protected.GET("/groups/:id/brainstorms/:bid", brainstormHandler.GetBrainstorm)
+			protected.PATCH("/groups/:id/brainstorms/:bid", brainstormHandler.UpdateBrainstorm)
+			protected.DELETE("/groups/:id/brainstorms/:bid", brainstormHandler.DeleteBrainstorm)
+			protected.PUT("/groups/:id/brainstorms/:bid/presenter", brainstormHandler.SetPresenter)
+
+			// Admin routes
+			admin := protected.Group("/admin")
+			admin.Use(middleware.AdminMiddleware(db))
+			{
+				admin.GET("/teams", adminHandler.ListAllTeams)
+				admin.PATCH("/teams/:id/plan", adminHandler.UpdateTeamPlan)
+			}
 		}
 	}
 

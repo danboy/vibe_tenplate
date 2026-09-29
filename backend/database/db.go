@@ -28,7 +28,21 @@ func InitDB() *gorm.DB {
 		log.Fatal("failed to setup user join table:", err)
 	}
 
-	if err := db.AutoMigrate(&models.User{}, &models.Team{}, &models.Group{}, &models.Project{}, &models.StickyNote{}, &models.NoteVote{}); err != nil {
+	// Rename legacy columns from the projects → brainstorms rename.
+	// HasColumn checks for the old name; if present we rename before AutoMigrate
+	// tries to add a new NOT NULL column and fails on existing rows.
+	if db.Migrator().HasColumn(&models.StickyNote{}, "project_id") {
+		if err := db.Exec("ALTER TABLE sticky_notes RENAME COLUMN project_id TO brainstorm_id").Error; err != nil {
+			log.Fatal("failed to rename sticky_notes.project_id: ", err)
+		}
+	}
+	if db.Migrator().HasColumn(&models.NoteVote{}, "project_id") {
+		if err := db.Exec("ALTER TABLE note_votes RENAME COLUMN project_id TO brainstorm_id").Error; err != nil {
+			log.Fatal("failed to rename note_votes.project_id: ", err)
+		}
+	}
+
+	if err := db.AutoMigrate(&models.User{}, &models.Team{}, &models.Group{}, &models.Brainstorm{}, &models.StickyNote{}, &models.NoteVote{}); err != nil {
 		log.Fatal("failed to migrate database:", err)
 	}
 

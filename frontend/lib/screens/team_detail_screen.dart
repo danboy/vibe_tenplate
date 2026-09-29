@@ -228,11 +228,11 @@ class _TeamHeader extends StatelessWidget {
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 12),
-              Row(
+              const Row(
                 children: [
-                  const Icon(Icons.lock_outline, size: 14, color: Colors.grey),
-                  const SizedBox(width: 6),
-                  const Text(
+                  Icon(Icons.lock_outline, size: 14, color: Colors.grey),
+                  SizedBox(width: 6),
+                  Text(
                     'Invite code',
                     style: TextStyle(
                         fontSize: 12,
@@ -454,7 +454,7 @@ class _TeamPlanSelectorState extends State<_TeamPlanSelector> {
           planKey: 'free',
           currentPlan: widget.team.plan,
           price: null,
-          features: const ['3 projects per group', 'Default activity settings'],
+          features: const ['3 brainstorms per group', 'Default activity settings'],
           onSelect: null,
         ),
         const SizedBox(height: 10),
@@ -464,7 +464,7 @@ class _TeamPlanSelectorState extends State<_TeamPlanSelector> {
           currentPlan: widget.team.plan,
           price: '\$4.99 / month',
           features: const [
-            'Unlimited projects',
+            'Unlimited brainstorms',
             'Custom activity settings',
             'Guest access'
           ],
@@ -477,7 +477,7 @@ class _TeamPlanSelectorState extends State<_TeamPlanSelector> {
           currentPlan: widget.team.plan,
           price: '\$9.99 / month',
           features: const [
-            'Unlimited projects',
+            'Unlimited brainstorms',
             'Custom activity settings',
             'Guest access'
           ],
@@ -740,8 +740,8 @@ class _MemberTile extends StatelessWidget {
 
     Widget trailing;
     if (isOwnerRole) {
-      trailing = Chip(
-        label: const Text('Owner'),
+      trailing = const Chip(
+        label: Text('Owner'),
         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         visualDensity: VisualDensity.compact,
       );

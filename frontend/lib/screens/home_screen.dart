@@ -46,8 +46,8 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
       _search = value;
       if (value.isEmpty) {
         _allGroupsFuture = null;
-      } else if (_allGroupsFuture == null) {
-        _allGroupsFuture = api.listGroups();
+      } else {
+        _allGroupsFuture ??= api.listGroups();
       }
     });
   }

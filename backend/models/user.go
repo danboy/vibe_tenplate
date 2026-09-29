@@ -15,6 +15,7 @@ type User struct {
 	Username  string         `json:"username" gorm:"uniqueIndex;not null"`
 	Email     string         `json:"email"    gorm:"uniqueIndex;not null"`
 	Password         string         `json:"-"        gorm:"not null"`
+	IsAdmin          bool           `json:"is_admin" gorm:"default:false"`
 	StripeCustomerID string         `json:"-"        gorm:"type:text"`
 	Groups           []Group        `json:"groups,omitempty" gorm:"many2many:user_groups;"`
 	Teams            []Team         `json:"teams,omitempty"  gorm:"many2many:team_members;"`
@@ -31,6 +32,7 @@ type UserResponse struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
 	Email    string `json:"email"`
+	IsAdmin  bool   `json:"is_admin"`
 }
 
 func (u *User) ToResponse() UserResponse {
@@ -38,5 +40,6 @@ func (u *User) ToResponse() UserResponse {
 		ID:       u.ID,
 		Username: u.Username,
 		Email:    u.Email,
+		IsAdmin:  u.IsAdmin,
 	}
 }

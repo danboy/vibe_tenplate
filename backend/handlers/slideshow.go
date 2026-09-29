@@ -47,12 +47,12 @@ func (h *SlideshowHandler) Connect(c *gin.Context) {
 		return
 	}
 
-	// The WS route uses the project UUID directly.
-	projectID := c.Param("id")
+	// The WS route uses the brainstorm UUID directly.
+	brainstormID := c.Param("id")
 
-	var project models.Project
-	if err := h.db.Where("id = ?", projectID).First(&project).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+	var brainstorm models.Brainstorm
+	if err := h.db.Where("id = ?", brainstormID).First(&brainstorm).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "brainstorm not found"})
 		return
 	}
 
@@ -60,15 +60,15 @@ func (h *SlideshowHandler) Connect(c *gin.Context) {
 
 	if claims.IsGuest {
 		// Guest tokens skip membership checks but require guests to be enabled.
-		if !project.GuestsEnabled {
-			c.JSON(http.StatusForbidden, gin.H{"error": "guest access is not enabled for this project"})
+		if !brainstorm.GuestsEnabled {
+			c.JSON(http.StatusForbidden, gin.H{"error": "guest access is not enabled for this brainstorm"})
 			return
 		}
 		username = claims.DisplayName
 	} else {
-		// Verify the user is a member of the project's group.
+		// Verify the user is a member of the brainstorm's group.
 		var group models.Group
-		if err := h.db.Preload("Members").Where("id = ?", project.GroupID).First(&group).Error; err != nil {
+		if err := h.db.Preload("Members").Where("id = ?", brainstorm.GroupID).First(&group).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
 			return
 		}
@@ -93,7 +93,7 @@ func (h *SlideshowHandler) Connect(c *gin.Context) {
 		return
 	}
 
-	hub := ws.GetHub(projectID, h.db)
+	hub := ws.GetHub(brainstormID, h.db)
 	client := ws.NewClient(hub, conn, claims.UserID, username)
 
 	hub.Register(client)

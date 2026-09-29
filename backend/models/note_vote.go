@@ -7,7 +7,7 @@ import (
 
 type NoteVote struct {
 	ID        string `json:"id"         gorm:"primaryKey;type:text"`
-	ProjectID string `json:"project_id" gorm:"not null;index;type:text"`
+	BrainstormID string `json:"brainstorm_id" gorm:"not null;index;type:text"`
 	NoteID    string `json:"note_id"    gorm:"not null;index;type:text"`
 	UserID    string `json:"user_id"    gorm:"not null;type:text"`
 	Count     int    `json:"count"      gorm:"not null;default:0"`

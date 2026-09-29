@@ -38,16 +38,10 @@ class _AppShellState extends State<AppShell> {
     return m?.group(1);
   }
 
-  String? _teamSlug(String location) {
-    final m = RegExp(r'^/teams/([^/]+)').firstMatch(location);
-    return m?.group(1);
-  }
-
   @override
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
     final groupSlug = _groupSlug(location);
-    final teamSlugInRoute = _teamSlug(location);
     if (groupSlug != null) _lastGroupSlug = groupSlug;
     final effectiveGroupSlug = groupSlug ?? _lastGroupSlug;
     final onTeamsList = location == '/teams';
@@ -292,6 +286,20 @@ class _SidebarContentState extends State<_SidebarContent> {
         ],
 
         const Spacer(),
+        if (context.watch<AuthProvider>().user?.isAdmin == true) ...[
+          Container(height: 1, color: theme.colorScheme.outlineVariant),
+          _SidebarItem(
+            icon: Icons.admin_panel_settings_outlined,
+            selectedIcon: Icons.admin_panel_settings,
+            label: 'Admin',
+            selected: GoRouterState.of(context).matchedLocation == '/admin',
+            expanded: widget.expanded,
+            onTap: () {
+              context.go('/admin');
+              widget.onItemTap?.call();
+            },
+          ),
+        ],
         Container(height: 1, color: theme.colorScheme.outlineVariant),
         _UserFooter(expanded: widget.expanded, onNavigate: widget.onItemTap),
       ],

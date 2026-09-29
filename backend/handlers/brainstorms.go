@@ -11,15 +11,15 @@ import (
 	"gorm.io/gorm"
 )
 
-type ProjectHandler struct {
+type BrainstormHandler struct {
 	db *gorm.DB
 }
 
-func NewProjectHandler(db *gorm.DB) *ProjectHandler {
-	return &ProjectHandler{db: db}
+func NewBrainstormHandler(db *gorm.DB) *BrainstormHandler {
+	return &BrainstormHandler{db: db}
 }
 
-type CreateProjectRequest struct {
+type CreateBrainstormRequest struct {
 	Name             string `json:"name" binding:"required,min=2"`
 	Description      string `json:"description"`
 	ProblemStatement string `json:"problem_statement"`
@@ -37,7 +37,7 @@ type CreateProjectRequest struct {
 
 // loadGroupAsMember fetches the group by slug with members preloaded and
 // verifies the requesting user is a member.
-func (h *ProjectHandler) loadGroupAsMember(c *gin.Context) (*models.Group, bool) {
+func (h *BrainstormHandler) loadGroupAsMember(c *gin.Context) (*models.Group, bool) {
 	userID := c.MustGet("userID").(string)
 	groupSlug := c.Param("id")
 
@@ -57,50 +57,50 @@ func (h *ProjectHandler) loadGroupAsMember(c *gin.Context) (*models.Group, bool)
 	return nil, false
 }
 
-type projectWithUsers struct {
-	models.Project
+type brainstormWithUsers struct {
+	models.Brainstorm
 	ActiveUsers int `json:"active_users"`
 }
 
-func (h *ProjectHandler) ListProjects(c *gin.Context) {
+func (h *BrainstormHandler) ListBrainstorms(c *gin.Context) {
 	group, ok := h.loadGroupAsMember(c)
 	if !ok {
 		return
 	}
 
-	var projects []models.Project
-	if err := h.db.Preload("Creator").Preload("Presenter").Where("group_id = ?", group.ID).Find(&projects).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch projects"})
+	var brainstorms []models.Brainstorm
+	if err := h.db.Preload("Creator").Preload("Presenter").Where("group_id = ?", group.ID).Find(&brainstorms).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch brainstorms"})
 		return
 	}
 
-	resp := make([]projectWithUsers, len(projects))
-	for i, p := range projects {
-		resp[i] = projectWithUsers{Project: p, ActiveUsers: ws.GetClientCount(p.ID)}
+	resp := make([]brainstormWithUsers, len(brainstorms))
+	for i, p := range brainstorms {
+		resp[i] = brainstormWithUsers{Brainstorm: p, ActiveUsers: ws.GetClientCount(p.ID)}
 	}
 	c.JSON(http.StatusOK, resp)
 }
 
-func (h *ProjectHandler) GetProject(c *gin.Context) {
+func (h *BrainstormHandler) GetBrainstorm(c *gin.Context) {
 	group, ok := h.loadGroupAsMember(c)
 	if !ok {
 		return
 	}
 
-	projectSlug := c.Param("pid")
+	brainstormSlug := c.Param("bid")
 
-	var project models.Project
+	var brainstorm models.Brainstorm
 	if err := h.db.Preload("Creator").Preload("Presenter").
-		Where("slug = ? AND group_id = ?", projectSlug, group.ID).
-		First(&project).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		Where("slug = ? AND group_id = ?", brainstormSlug, group.ID).
+		First(&brainstorm).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "brainstorm not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, project)
+	c.JSON(http.StatusOK, brainstorm)
 }
 
-func (h *ProjectHandler) CreateProject(c *gin.Context) {
+func (h *BrainstormHandler) CreateBrainstorm(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
 
 	group, ok := h.loadGroupAsMember(c)
@@ -108,19 +108,19 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		return
 	}
 
-	// Only team owners and editors may create projects
+	// Only team owners and editors may create brainstorms
 	if group.Team != nil {
 		isTeamOwner := group.Team.OwnerID == userID
 		if !isTeamOwner {
 			var tm models.TeamMember
 			if err := h.db.Where("team_id = ? AND user_id = ?", group.Team.ID, userID).First(&tm).Error; err != nil || tm.Role != "editor" {
-				c.JSON(http.StatusForbidden, gin.H{"error": "only team owners and editors can create projects"})
+				c.JSON(http.StatusForbidden, gin.H{"error": "only team owners and editors can create brainstorms"})
 				return
 			}
 		}
 	}
 
-	var req CreateProjectRequest
+	var req CreateBrainstormRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -133,12 +133,12 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 
 	if groupPlan == "free" {
 		var count int64
-		h.db.Model(&models.Project{}).Where("group_id = ?", group.ID).Count(&count)
+		h.db.Model(&models.Brainstorm{}).Where("group_id = ?", group.ID).Count(&count)
 		if count >= 3 {
-			c.JSON(http.StatusForbidden, gin.H{"error": "project limit reached for this group's plan"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "brainstorm limit reached for this group's plan"})
 			return
 		}
-		// Free groups cannot customize projects or enable guests
+		// Free groups cannot customize brainstorms or enable guests
 		req.EnableProblem = true
 		req.EnableVote = true
 		req.EnablePrioritise = true
@@ -152,11 +152,11 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 
 	slug := utils.UniqueSlug(utils.Slugify(req.Name), func(s string) bool {
 		var count int64
-		h.db.Model(&models.Project{}).Where("group_id = ? AND slug = ?", group.ID, s).Count(&count)
+		h.db.Model(&models.Brainstorm{}).Where("group_id = ? AND slug = ?", group.ID, s).Count(&count)
 		return count > 0
 	})
 
-	project := models.Project{
+	brainstorm := models.Brainstorm{
 		Name:                   req.Name,
 		Slug:                   slug,
 		Description:            req.Description,
@@ -174,13 +174,13 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		InterstitialPrioritise: req.InterstitialPrioritise,
 	}
 
-	if err := h.db.Create(&project).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create project"})
+	if err := h.db.Create(&brainstorm).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create brainstorm"})
 		return
 	}
 	// UpdateColumns with a map always sets the value even when false,
 	// because GORM's zero-value skip only applies to struct-based updates.
-	h.db.Model(&project).UpdateColumns(map[string]any{
+	h.db.Model(&brainstorm).UpdateColumns(map[string]any{
 		"enable_problem":          req.EnableProblem,
 		"enable_vote":             req.EnableVote,
 		"enable_prioritise":       req.EnablePrioritise,
@@ -192,12 +192,12 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		"interstitial_prioritise": req.InterstitialPrioritise,
 	})
 
-	h.db.Preload("Creator").Preload("Presenter").First(&project, "id = ?", project.ID)
+	h.db.Preload("Creator").Preload("Presenter").First(&brainstorm, "id = ?", brainstorm.ID)
 
-	c.JSON(http.StatusCreated, project)
+	c.JSON(http.StatusCreated, brainstorm)
 }
 
-func (h *ProjectHandler) SetPresenter(c *gin.Context) {
+func (h *BrainstormHandler) SetPresenter(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
 
 	group, ok := h.loadGroupAsMember(c)
@@ -205,15 +205,15 @@ func (h *ProjectHandler) SetPresenter(c *gin.Context) {
 		return
 	}
 
-	projectSlug := c.Param("pid")
-	var project models.Project
-	if err := h.db.Where("slug = ? AND group_id = ?", projectSlug, group.ID).First(&project).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+	brainstormSlug := c.Param("bid")
+	var brainstorm models.Brainstorm
+	if err := h.db.Where("slug = ? AND group_id = ?", brainstormSlug, group.ID).First(&brainstorm).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "brainstorm not found"})
 		return
 	}
 
-	if project.CreatedBy != userID && group.OwnerID != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only the project creator or group owner can set the presenter"})
+	if brainstorm.CreatedBy != userID && group.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the brainstorm creator or group owner can set the presenter"})
 		return
 	}
 
@@ -242,14 +242,14 @@ func (h *ProjectHandler) SetPresenter(c *gin.Context) {
 		}
 	}
 
-	h.db.Model(&project).Update("presenter_id", req.UserID)
-	ws.NotifyPresenter(project.ID, req.UserID, presenterUsername)
+	h.db.Model(&brainstorm).Update("presenter_id", req.UserID)
+	ws.NotifyPresenter(brainstorm.ID, req.UserID, presenterUsername)
 
-	h.db.Preload("Creator").Preload("Presenter").First(&project, "id = ?", project.ID)
-	c.JSON(http.StatusOK, project)
+	h.db.Preload("Creator").Preload("Presenter").First(&brainstorm, "id = ?", brainstorm.ID)
+	c.JSON(http.StatusOK, brainstorm)
 }
 
-func (h *ProjectHandler) UpdateProject(c *gin.Context) {
+func (h *BrainstormHandler) UpdateBrainstorm(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
 
 	group, ok := h.loadGroupAsMember(c)
@@ -257,15 +257,15 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		return
 	}
 
-	projectSlug := c.Param("pid")
-	var project models.Project
-	if err := h.db.Where("slug = ? AND group_id = ?", projectSlug, group.ID).First(&project).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+	brainstormSlug := c.Param("bid")
+	var brainstorm models.Brainstorm
+	if err := h.db.Where("slug = ? AND group_id = ?", brainstormSlug, group.ID).First(&brainstorm).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "brainstorm not found"})
 		return
 	}
 
-	if project.CreatedBy != userID && group.OwnerID != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only the project creator or group owner can edit this project"})
+	if brainstorm.CreatedBy != userID && group.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the brainstorm creator or group owner can edit this brainstorm"})
 		return
 	}
 
@@ -305,7 +305,7 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		req.InterstitialPrioritise = ""
 	}
 
-	h.db.Model(&project).UpdateColumns(map[string]any{
+	h.db.Model(&brainstorm).UpdateColumns(map[string]any{
 		"name":                    req.Name,
 		"description":             req.Description,
 		"problem_statement":       req.ProblemStatement,
@@ -320,11 +320,11 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		"interstitial_prioritise": req.InterstitialPrioritise,
 	})
 
-	h.db.Preload("Creator").Preload("Presenter").First(&project, "id = ?", project.ID)
-	c.JSON(http.StatusOK, project)
+	h.db.Preload("Creator").Preload("Presenter").First(&brainstorm, "id = ?", brainstorm.ID)
+	c.JSON(http.StatusOK, brainstorm)
 }
 
-func (h *ProjectHandler) DeleteProject(c *gin.Context) {
+func (h *BrainstormHandler) DeleteBrainstorm(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
 
 	group, ok := h.loadGroupAsMember(c)
@@ -332,19 +332,19 @@ func (h *ProjectHandler) DeleteProject(c *gin.Context) {
 		return
 	}
 
-	projectSlug := c.Param("pid")
+	brainstormSlug := c.Param("bid")
 
-	var project models.Project
-	if err := h.db.Where("slug = ? AND group_id = ?", projectSlug, group.ID).First(&project).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+	var brainstorm models.Brainstorm
+	if err := h.db.Where("slug = ? AND group_id = ?", brainstormSlug, group.ID).First(&brainstorm).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "brainstorm not found"})
 		return
 	}
 
-	if project.CreatedBy != userID && group.OwnerID != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only the project creator or group owner can delete this project"})
+	if brainstorm.CreatedBy != userID && group.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the brainstorm creator or group owner can delete this brainstorm"})
 		return
 	}
 
-	h.db.Delete(&project)
-	c.JSON(http.StatusOK, gin.H{"message": "project deleted"})
+	h.db.Delete(&brainstorm)
+	c.JSON(http.StatusOK, gin.H{"message": "brainstorm deleted"})
 }

@@ -3,7 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/group.dart';
-import '../models/project.dart';
+import '../models/brainstorm.dart';
 import '../models/team.dart';
 
 class ApiException implements Exception {
@@ -125,18 +125,18 @@ class ApiService {
 
   // ── Guest ───────────────────────────────────────────────────────────────────
 
-  /// Fetches minimal project info without auth — used to check if guests are enabled.
-  Future<Map<String, dynamic>> getGuestProject(String groupSlug, String projectSlug) async {
+  /// Fetches minimal brainstorm info without auth — used to check if guests are enabled.
+  Future<Map<String, dynamic>> getGuestBrainstorm(String groupSlug, String brainstormSlug) async {
     final response = await _get(
-      Uri.parse('$baseUrl/guest/groups/$groupSlug/projects/$projectSlug'),
+      Uri.parse('$baseUrl/guest/groups/$groupSlug/brainstorms/$brainstormSlug'),
     );
     return _parseMap(response);
   }
 
-  /// Joins a project as a guest and returns a short-lived token.
-  Future<String> guestJoin(String projectId, String displayName) async {
+  /// Joins a brainstorm as a guest and returns a short-lived token.
+  Future<String> guestJoinBrainstorm(String brainstormId, String displayName) async {
     final response = await _post(
-      Uri.parse('$baseUrl/guest/projects/$projectId/join'),
+      Uri.parse('$baseUrl/guest/brainstorms/$brainstormId/join'),
       body: json.encode({'display_name': displayName}),
     );
     final data = await _parseMap(response);
@@ -338,28 +338,28 @@ class ApiService {
     return list.map((g) => Group.fromJson(g as Map<String, dynamic>)).toList();
   }
 
-  // ── Projects ────────────────────────────────────────────────────────────────
+  // ── Brainstorms ────────────────────────────────────────────────────────────────
 
-  Future<List<Project>> listProjects(String groupSlug) async {
-    final response = await _get(Uri.parse('$baseUrl/groups/$groupSlug/projects'));
+  Future<List<Brainstorm>> listBrainstorms(String groupSlug) async {
+    final response = await _get(Uri.parse('$baseUrl/groups/$groupSlug/brainstorms'));
     final list = await _parseList(response);
     return list
-        .map((p) => Project.fromJson(p as Map<String, dynamic>))
+        .map((p) => Brainstorm.fromJson(p as Map<String, dynamic>))
         .toList();
   }
 
-  Future<Project> getProject({
+  Future<Brainstorm> getBrainstorm({
     required String groupSlug,
-    required String projectSlug,
+    required String brainstormSlug,
   }) async {
     final response = await _get(
-      Uri.parse('$baseUrl/groups/$groupSlug/projects/$projectSlug'),
+      Uri.parse('$baseUrl/groups/$groupSlug/brainstorms/$brainstormSlug'),
     );
     final data = await _parseMap(response);
-    return Project.fromJson(data);
+    return Brainstorm.fromJson(data);
   }
 
-  Future<Project> createProject({
+  Future<Brainstorm> createBrainstorm({
     required String groupSlug,
     required String name,
     required String description,
@@ -375,7 +375,7 @@ class ApiService {
     String interstitialPrioritise = '',
   }) async {
     final response = await _post(
-      Uri.parse('$baseUrl/groups/$groupSlug/projects'),
+      Uri.parse('$baseUrl/groups/$groupSlug/brainstorms'),
       body: json.encode({
         'name': name,
         'description': description,
@@ -392,12 +392,12 @@ class ApiService {
       }),
     );
     final data = await _parseMap(response);
-    return Project.fromJson(data);
+    return Brainstorm.fromJson(data);
   }
 
-  Future<Project> updateProject({
+  Future<Brainstorm> updateBrainstorm({
     required String groupSlug,
-    required String projectSlug,
+    required String brainstormSlug,
     required String name,
     required String description,
     required String problemStatement,
@@ -412,7 +412,7 @@ class ApiService {
     String interstitialPrioritise = '',
   }) async {
     final response = await _patch(
-      Uri.parse('$baseUrl/groups/$groupSlug/projects/$projectSlug'),
+      Uri.parse('$baseUrl/groups/$groupSlug/brainstorms/$brainstormSlug'),
       body: json.encode({
         'name': name,
         'description': description,
@@ -429,29 +429,46 @@ class ApiService {
       }),
     );
     final data = await _parseMap(response);
-    return Project.fromJson(data);
+    return Brainstorm.fromJson(data);
   }
 
-  Future<void> deleteProject({
+  Future<void> deleteBrainstorm({
     required String groupSlug,
-    required String projectSlug,
+    required String brainstormSlug,
   }) async {
     final response = await _delete(
-      Uri.parse('$baseUrl/groups/$groupSlug/projects/$projectSlug'),
+      Uri.parse('$baseUrl/groups/$groupSlug/brainstorms/$brainstormSlug'),
     );
     await _parseMap(response);
   }
 
-  Future<Project> setPresenter({
+  // ── Admin ───────────────────────────────────────────────────────────────────
+
+  Future<List<Team>> adminListTeams() async {
+    final response = await _get(Uri.parse('$baseUrl/admin/teams'));
+    final list = await _parseList(response);
+    return list.map((t) => Team.fromJson(t as Map<String, dynamic>)).toList();
+  }
+
+  Future<Team> adminUpdateTeamPlan(String teamId, String plan) async {
+    final response = await _patch(
+      Uri.parse('$baseUrl/admin/teams/$teamId/plan'),
+      body: json.encode({'plan': plan}),
+    );
+    final data = await _parseMap(response);
+    return Team.fromJson(data);
+  }
+
+  Future<Brainstorm> setPresenter({
     required String groupSlug,
-    required String projectSlug,
+    required String brainstormSlug,
     String? userId,
   }) async {
     final response = await _put(
-      Uri.parse('$baseUrl/groups/$groupSlug/projects/$projectSlug/presenter'),
+      Uri.parse('$baseUrl/groups/$groupSlug/brainstorms/$brainstormSlug/presenter'),
       body: json.encode({'user_id': userId}),
     );
     final data = await _parseMap(response);
-    return Project.fromJson(data);
+    return Brainstorm.fromJson(data);
   }
 }

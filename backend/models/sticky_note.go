@@ -12,7 +12,7 @@ type StickyNote struct {
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-"          gorm:"index"`
-	ProjectID string         `json:"project_id" gorm:"not null;index;type:text"`
+	BrainstormID string         `json:"brainstorm_id" gorm:"not null;index;type:text"`
 	Content   string         `json:"content"`
 	PosX      float64        `json:"pos_x"`
 	PosY      float64        `json:"pos_y"`

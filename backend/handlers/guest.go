@@ -21,11 +21,11 @@ func NewGuestHandler(db *gorm.DB) *GuestHandler {
 	return &GuestHandler{db: db}
 }
 
-// GetGuestProject returns basic project info for unauthenticated users.
+// GetGuestBrainstorm returns basic project info for unauthenticated users.
 // Used by the frontend to decide whether to show the guest join prompt.
-func (h *GuestHandler) GetGuestProject(c *gin.Context) {
+func (h *GuestHandler) GetGuestBrainstorm(c *gin.Context) {
 	groupSlug := c.Param("id")
-	projectSlug := c.Param("pid")
+	brainstormSlug := c.Param("bid")
 
 	var group models.Group
 	if err := h.db.Where("slug = ?", groupSlug).First(&group).Error; err != nil {
@@ -33,32 +33,32 @@ func (h *GuestHandler) GetGuestProject(c *gin.Context) {
 		return
 	}
 
-	var project models.Project
-	if err := h.db.Where("slug = ? AND group_id = ?", projectSlug, group.ID).First(&project).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+	var brainstorm models.Brainstorm
+	if err := h.db.Where("slug = ? AND group_id = ?", brainstormSlug, group.ID).First(&brainstorm).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "brainstorm not found"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":             project.ID,
-		"name":           project.Name,
-		"guests_enabled": project.GuestsEnabled,
-		"enable_problem": project.EnableProblem,
+		"id":             brainstorm.ID,
+		"name":           brainstorm.Name,
+		"guests_enabled": brainstorm.GuestsEnabled,
+		"enable_problem": brainstorm.EnableProblem,
 	})
 }
 
-// GuestJoin issues a short-lived guest JWT for the given project.
+// GuestJoin issues a short-lived guest JWT for the given brainstorm.
 func (h *GuestHandler) GuestJoin(c *gin.Context) {
-	projectID := c.Param("id")
+	brainstormID := c.Param("id")
 
-	var project models.Project
-	if err := h.db.Where("id = ?", projectID).First(&project).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+	var brainstorm models.Brainstorm
+	if err := h.db.Where("id = ?", brainstormID).First(&brainstorm).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "brainstorm not found"})
 		return
 	}
 
-	if !project.GuestsEnabled {
-		c.JSON(http.StatusForbidden, gin.H{"error": "guest access is not enabled for this project"})
+	if !brainstorm.GuestsEnabled {
+		c.JSON(http.StatusForbidden, gin.H{"error": "guest access is not enabled for this brainstorm"})
 		return
 	}
 

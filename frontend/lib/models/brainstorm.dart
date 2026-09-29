@@ -1,4 +1,4 @@
-class Project {
+class Brainstorm {
   final String id;
   final String slug;
   final String name;
@@ -21,7 +21,7 @@ class Project {
   final String interstitialVote;
   final String interstitialPrioritise;
 
-  const Project({
+  const Brainstorm({
     required this.id,
     required this.slug,
     required this.name,
@@ -59,7 +59,7 @@ class Project {
     return value.isEmpty ? null : value;
   }
 
-  factory Project.fromJson(Map<String, dynamic> json) => Project(
+  factory Brainstorm.fromJson(Map<String, dynamic> json) => Brainstorm(
         id: json['id'] as String,
         slug: json['slug'] as String,
         name: json['name'] as String,
@@ -85,8 +85,8 @@ class Project {
         interstitialPrioritise: json['interstitial_prioritise'] as String? ?? '',
       );
 
-  Project copyWith({String? presenterId, String? presenterUsername, bool clearPresenter = false}) =>
-      Project(
+  Brainstorm copyWith({String? presenterId, String? presenterUsername, bool clearPresenter = false}) =>
+      Brainstorm(
         id: id,
         slug: slug,
         name: name,

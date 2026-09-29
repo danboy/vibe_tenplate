@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../models/group.dart';
-import '../models/project.dart';
+import '../models/brainstorm.dart';
 import '../providers/auth_provider.dart';
 import 'app_shell.dart';
 
@@ -18,8 +18,8 @@ class GroupWorkspaceScreen extends StatefulWidget {
 }
 
 class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
-  late Future<(Group, List<Project>)> _future;
-  List<Project>? _projects; // kept in sync for silent refreshes
+  late Future<(Group, List<Brainstorm>)> _future;
+  List<Brainstorm>? _brainstorms; // kept in sync for silent refreshes
   String _search = '';
   Timer? _refreshTimer;
 
@@ -28,7 +28,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     super.initState();
     _load();
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (mounted) _silentRefreshProjects();
+      if (mounted) _silentRefreshBrainstorms();
     });
   }
 
@@ -40,20 +40,20 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
 
   void _load() {
     final api = context.read<AuthProvider>().api;
-    _projects = null;
+    _brainstorms = null;
     _future = Future.wait([
       api.getGroup(widget.groupSlug),
-      api.listProjects(widget.groupSlug),
-    ]).then((results) => (results[0] as Group, results[1] as List<Project>));
+      api.listBrainstorms(widget.groupSlug),
+    ]).then((results) => (results[0] as Group, results[1] as List<Brainstorm>));
   }
 
   // Refresh only the projects list so active user counts update without
   // showing a loading spinner or re-fetching the group.
-  void _silentRefreshProjects() {
+  void _silentRefreshBrainstorms() {
     final api = context.read<AuthProvider>().api;
-    api.listProjects(widget.groupSlug).then((projects) {
+    api.listBrainstorms(widget.groupSlug).then((projects) {
       if (!mounted) return;
-      setState(() => _projects = projects);
+      setState(() => _brainstorms = projects);
     }).catchError((_) {});
   }
 
@@ -75,7 +75,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('New Project'),
+          title: const Text('New Brainstorm'),
           content: Form(
             key: formKey,
             child: SingleChildScrollView(
@@ -86,7 +86,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                   TextFormField(
                     controller: nameCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Project name',
+                      labelText: 'Brainstorm name',
                       border: OutlineInputBorder(),
                     ),
                     validator: (v) =>
@@ -209,7 +209,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
 
     try {
       final api = context.read<AuthProvider>().api;
-      await api.createProject(
+      await api.createBrainstorm(
         groupSlug: widget.groupSlug,
         name: nameCtrl.text.trim(),
         description: descCtrl.text.trim(),
@@ -233,22 +233,22 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     }
   }
 
-  Future<void> _showEditDialog(Project project) async {
-    final nameCtrl = TextEditingController(text: project.name);
-    final descCtrl = TextEditingController(text: project.description);
-    final problemCtrl = TextEditingController(text: project.problemStatement);
+  Future<void> _showEditDialog(Brainstorm brainstorm) async {
+    final nameCtrl = TextEditingController(text: brainstorm.name);
+    final descCtrl = TextEditingController(text: brainstorm.description);
+    final problemCtrl = TextEditingController(text: brainstorm.problemStatement);
     final iCtrl = _InterstitialControllers(
-      problem: project.interstitialProblem,
-      brainstorm: project.interstitialBrainstorm,
-      group: project.interstitialGroup,
-      vote: project.interstitialVote,
-      prioritise: project.interstitialPrioritise,
+      problem: brainstorm.interstitialProblem,
+      brainstorm: brainstorm.interstitialBrainstorm,
+      group: brainstorm.interstitialGroup,
+      vote: brainstorm.interstitialVote,
+      prioritise: brainstorm.interstitialPrioritise,
     );
     final formKey = GlobalKey<FormState>();
-    var enableProblem = project.enableProblem;
-    var enableVote = project.enableVote;
-    var enablePrioritise = project.enablePrioritise;
-    var guestsEnabled = project.guestsEnabled;
+    var enableProblem = brainstorm.enableProblem;
+    var enableVote = brainstorm.enableVote;
+    var enablePrioritise = brainstorm.enablePrioritise;
+    var guestsEnabled = brainstorm.guestsEnabled;
     // Fetch group to get current plan
     final group = await context.read<AuthProvider>().api.getGroup(widget.groupSlug);
     if (!mounted) return;
@@ -258,7 +258,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Edit Project'),
+          title: const Text('Edit Brainstorm'),
           content: Form(
             key: formKey,
             child: SingleChildScrollView(
@@ -269,7 +269,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                   TextFormField(
                     controller: nameCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Project name',
+                      labelText: 'Brainstorm name',
                       border: OutlineInputBorder(),
                     ),
                     validator: (v) =>
@@ -392,9 +392,9 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
 
     try {
       final api = context.read<AuthProvider>().api;
-      await api.updateProject(
+      await api.updateBrainstorm(
         groupSlug: widget.groupSlug,
-        projectSlug: project.slug,
+        brainstormSlug: brainstorm.slug,
         name: nameCtrl.text.trim(),
         description: descCtrl.text.trim(),
         problemStatement: problemCtrl.text.trim(),
@@ -417,13 +417,13 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     }
   }
 
-  Future<void> _confirmDelete(Group group, Project project) async {
+  Future<void> _confirmDelete(Group group, Brainstorm brainstorm) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Project'),
+        title: const Text('Delete Brainstorm'),
         content: Text(
-            'Are you sure you want to delete "${project.name}"? This cannot be undone.'),
+            'Are you sure you want to delete "${brainstorm.name}"? This cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -445,7 +445,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
 
     try {
       final api = context.read<AuthProvider>().api;
-      await api.deleteProject(groupSlug: widget.groupSlug, projectSlug: project.slug);
+      await api.deleteBrainstorm(groupSlug: widget.groupSlug, brainstormSlug: brainstorm.slug);
       _refresh();
     } catch (e) {
       if (mounted) {
@@ -460,7 +460,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     final theme = Theme.of(context);
     final me = context.read<AuthProvider>().user!;
 
-    return FutureBuilder<(Group, List<Project>)>(
+    return FutureBuilder<(Group, List<Brainstorm>)>(
       future: _future,
       builder: (context, snap) {
         final group = snap.data?.$1;
@@ -470,7 +470,14 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
           appBar: AppBar(
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              onPressed: () => context.go('/groups'),
+              onPressed: () {
+                final teamSlug = context.read<AuthProvider>().currentTeamSlug;
+                if (teamSlug != null) {
+                  context.go('/teams/$teamSlug');
+                } else {
+                  context.go('/teams');
+                }
+              },
             ),
             title: Text(group?.name ?? '…'),
             actions: [
@@ -492,7 +499,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
               : FloatingActionButton.extended(
                   onPressed: () => _showCreateDialog(group),
                   icon: const Icon(Icons.add),
-                  label: const Text('New Project'),
+                  label: const Text('New Brainstorm'),
                 ),
           body: _buildBody(snap, group, projects, me, theme),
         );
@@ -501,9 +508,9 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
   }
 
   Widget _buildBody(
-    AsyncSnapshot<(Group, List<Project>)> snap,
+    AsyncSnapshot<(Group, List<Brainstorm>)> snap,
     Group? group,
-    List<Project>? projects,
+    List<Brainstorm>? projects,
     dynamic me,
     ThemeData theme,
   ) {
@@ -512,7 +519,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     }
     // Use the silently-refreshed list if available, so active user counts
     // update without reloading the whole screen.
-    projects = _projects ?? projects;
+    projects = _brainstorms ?? projects;
     if (snap.hasError) {
       return Center(
         child: Column(
@@ -535,10 +542,10 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
           children: [
             Icon(Icons.folder_open, size: 64, color: theme.colorScheme.outline),
             const SizedBox(height: 16),
-            const Text('No projects yet', style: TextStyle(fontSize: 16)),
+            const Text('No brainstorms yet', style: TextStyle(fontSize: 16)),
             const SizedBox(height: 8),
             const Text(
-              'Create your first project using the button below',
+              'Create your first brainstorm using the button below',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey),
             ),
@@ -562,7 +569,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
           children: [
             Icon(Icons.search_off, size: 64, color: Colors.grey),
             SizedBox(height: 16),
-            Text('No projects found', style: TextStyle(fontSize: 16)),
+            Text('No brainstorms found', style: TextStyle(fontSize: 16)),
           ],
         ),
       );
@@ -574,7 +581,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: TextField(
             decoration: const InputDecoration(
-              hintText: 'Search projects…',
+              hintText: 'Search brainstorms…',
               prefixIcon: Icon(Icons.search, size: 20),
             ),
             onChanged: (v) => setState(() => _search = v),
@@ -592,12 +599,12 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
           final canDelete =
               p.createdBy == me.id || group!.ownerId == me.id;
           return _ProjectCard(
-            project: p,
+            brainstorm: p,
             canDelete: canDelete,
             onEdit: canDelete ? () => _showEditDialog(p) : null,
             onDelete: () => _confirmDelete(group!, p),
             onTap: () => context.go(
-              '/groups/${widget.groupSlug}/projects/${p.slug}',
+              '/groups/${widget.groupSlug}/brainstorms/${p.slug}',
             ),
           );
         },
@@ -611,14 +618,14 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
 
 
 class _ProjectCard extends StatelessWidget {
-  final Project project;
+  final Brainstorm brainstorm;
   final bool canDelete;
   final VoidCallback? onEdit;
   final VoidCallback onDelete;
   final VoidCallback? onTap;
 
   const _ProjectCard({
-    required this.project,
+    required this.brainstorm,
     required this.canDelete,
     this.onEdit,
     required this.onDelete,
@@ -647,12 +654,12 @@ class _ProjectCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(project.name,
+                    Text(brainstorm.name,
                         style: const TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 16)),
-                    if (project.description.isNotEmpty) ...[
+                    if (brainstorm.description.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      Text(project.description,
+                      Text(brainstorm.description,
                           style: TextStyle(
                               color: Colors.grey.shade600, fontSize: 13)),
                     ],
@@ -662,13 +669,13 @@ class _ProjectCard extends StatelessWidget {
                         const Icon(Icons.person_outline,
                             size: 13, color: Colors.grey),
                         const SizedBox(width: 4),
-                        Text(project.creatorUsername ?? 'Unknown',
+                        Text(brainstorm.creatorUsername ?? 'Unknown',
                             style: const TextStyle(
                                 color: Colors.grey, fontSize: 12)),
                         const SizedBox(width: 12),
                         const Icon(Icons.schedule, size: 13, color: Colors.grey),
                         const SizedBox(width: 4),
-                        Text(_formatDate(project.createdAt),
+                        Text(_formatDate(brainstorm.createdAt),
                             style: const TextStyle(
                                 color: Colors.grey, fontSize: 12)),
                         if (true) ...[
@@ -677,7 +684,7 @@ class _ProjectCard extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: project.activeUsers > 0
+                              color: brainstorm.activeUsers > 0
                                   ? Colors.green.shade100
                                   : Colors.grey.shade100,
                               borderRadius: BorderRadius.circular(10),
@@ -689,7 +696,7 @@ class _ProjectCard extends StatelessWidget {
                                   width: 6,
                                   height: 6,
                                   decoration: BoxDecoration(
-                                    color: project.activeUsers > 0
+                                    color: brainstorm.activeUsers > 0
                                         ? Colors.green
                                         : Colors.grey,
                                     shape: BoxShape.circle,
@@ -697,9 +704,9 @@ class _ProjectCard extends StatelessWidget {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  '${project.activeUsers} active',
+                                  '${brainstorm.activeUsers} active',
                                   style: TextStyle(
-                                      color: project.activeUsers > 0
+                                      color: brainstorm.activeUsers > 0
                                           ? Colors.green
                                           : Colors.grey,
                                       fontSize: 11,
