@@ -447,6 +447,97 @@ func (h *TeamHandler) CreateCheckoutSession(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"url": s.URL})
 }
 
+// ── SSO auto-join ────────────────────────────────────────────────────────────
+
+var validSSOProviders = map[string]bool{"google": true, "github": true, "gitlab": true}
+
+func (h *TeamHandler) requireOwner(c *gin.Context, teamSlug, userID string) (*models.Team, bool) {
+	var team models.Team
+	if err := h.db.Where("slug = ?", teamSlug).First(&team).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "team not found"})
+		return nil, false
+	}
+	if team.OwnerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the team owner can manage SSO settings"})
+		return nil, false
+	}
+	return &team, true
+}
+
+func (h *TeamHandler) ListSSOConfigs(c *gin.Context) {
+	userID := c.MustGet("userID").(string)
+	team, ok := h.requireOwner(c, c.Param("id"), userID)
+	if !ok {
+		return
+	}
+
+	var configs []models.TeamSSOConfig
+	if err := h.db.Where("team_id = ?", team.ID).Find(&configs).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch SSO settings"})
+		return
+	}
+	c.JSON(http.StatusOK, configs)
+}
+
+type UpsertSSOConfigRequest struct {
+	OrgMatch string `json:"org_match" binding:"required"`
+}
+
+func (h *TeamHandler) UpsertSSOConfig(c *gin.Context) {
+	userID := c.MustGet("userID").(string)
+	provider := c.Param("provider")
+	if !validSSOProviders[provider] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "provider must be google, github, or gitlab"})
+		return
+	}
+
+	team, ok := h.requireOwner(c, c.Param("id"), userID)
+	if !ok {
+		return
+	}
+
+	var req UpsertSSOConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var config models.TeamSSOConfig
+	err := h.db.Where("team_id = ? AND provider = ?", team.ID, provider).First(&config).Error
+	if err == nil {
+		if updateErr := h.db.Model(&config).Update("org_match", req.OrgMatch).Error; updateErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update SSO settings"})
+			return
+		}
+		config.OrgMatch = req.OrgMatch
+		c.JSON(http.StatusOK, config)
+		return
+	}
+
+	config = models.TeamSSOConfig{TeamID: team.ID, Provider: provider, OrgMatch: req.OrgMatch}
+	if err := h.db.Create(&config).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save SSO settings"})
+		return
+	}
+	c.JSON(http.StatusCreated, config)
+}
+
+func (h *TeamHandler) DeleteSSOConfig(c *gin.Context) {
+	userID := c.MustGet("userID").(string)
+	provider := c.Param("provider")
+
+	team, ok := h.requireOwner(c, c.Param("id"), userID)
+	if !ok {
+		return
+	}
+
+	if err := h.db.Where("team_id = ? AND provider = ?", team.ID, provider).Delete(&models.TeamSSOConfig{}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to remove SSO settings"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "SSO settings removed"})
+}
+
 func (h *TeamHandler) CreatePortalSession(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
 	teamSlug := c.Param("id")

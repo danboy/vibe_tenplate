@@ -25,9 +25,25 @@ Requires a `.env` file in `backend/`:
 DATABASE_URL=host=/run/postgresql user=dan dbname=tenplate sslmode=disable
 JWT_SECRET=change-me-in-production
 PORT=8080
+
+# SSO (optional — omit a provider's vars to leave "Continue with X" disabled for it)
+OAUTH_REDIRECT_BASE_URL=http://localhost:8080
+FRONTEND_BASE_URL=http://localhost:5000
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+GITLAB_CLIENT_ID=
+GITLAB_CLIENT_SECRET=
 ```
 
 The app uses a local PostgreSQL database named `tenplate`. `DATABASE_URL` uses the Unix socket path (`host=/run/postgresql`) for peer auth. GORM runs `AutoMigrate` on startup — no manual migrations needed.
+
+### SSO (Google/GitHub/GitLab)
+
+App-wide OAuth apps (not per-team) — `backend/handlers/oauth.go`. `GET /api/auth/oauth/:provider/start` redirects to the provider; `GET /api/auth/oauth/:provider/callback` resolves/creates a `User`, links an `OAuthIdentity`, runs team auto-join, and redirects to `FRONTEND_BASE_URL/auth/callback?token=...`. The OAuth `state` param is a short-lived signed JWT (`JWT_SECRET`) carrying the post-login redirect — no server-side session storage.
+
+Team owners configure auto-join per provider in team settings (`TeamSSOConfig`: team + provider + `org_match` — a Google Workspace domain, GitHub org login, or GitLab group path). Anyone who signs in via that provider and belongs to the matching org/domain is added to the team automatically, no invite code needed.
 
 ### Building
 

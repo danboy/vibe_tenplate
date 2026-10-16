@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/error_banner.dart';
+import '../widgets/sso_buttons.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -47,6 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final redirect = GoRouterState.of(context).uri.queryParameters['redirect'];
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -116,12 +118,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             )
                           : const Text('Sign In'),
                     ),
+                    const SizedBox(height: 24),
+                    SsoButtons(redirect: redirect),
                     const SizedBox(height: 12),
                     TextButton(
                       onPressed: () {
-                        final redirect = GoRouterState.of(context)
-                            .uri
-                            .queryParameters['redirect'];
                         final dest = redirect != null
                             ? '/auth/register?redirect=${Uri.encodeComponent(redirect)}'
                             : '/auth/register';

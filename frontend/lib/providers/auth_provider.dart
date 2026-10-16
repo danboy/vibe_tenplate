@@ -69,6 +69,11 @@ class AuthProvider extends ChangeNotifier {
     await _saveSession(result.token, result.user);
   }
 
+  Future<void> loginWithToken(String token) async {
+    final user = await ApiService(token: token).getMe();
+    await _saveSession(token, user);
+  }
+
   Future<void> _saveSession(String token, User user) async {
     _token = token;
     _user = user;

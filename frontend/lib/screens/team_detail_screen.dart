@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/team.dart';
+import '../models/team_sso_config.dart';
 import 'app_shell.dart';
 
 class TeamDetailScreen extends StatefulWidget {
@@ -149,6 +150,25 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         team: team,
                         onPlanChanged: _refresh,
                       ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Single Sign-On',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Anyone who signs in via a matching org/domain below is '
+                      'added to this team automatically.',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 12),
+                    _TeamSsoSettings(teamSlug: team.slug),
                   ],
                 ],
               ),
@@ -796,6 +816,144 @@ class _MemberTile extends StatelessWidget {
       ),
       subtitle: Text(member.email, style: const TextStyle(fontSize: 12)),
       trailing: trailing,
+    );
+  }
+}
+
+const _ssoProviders = ['google', 'github', 'gitlab'];
+
+const _ssoProviderLabels = {
+  'google': 'Google (Workspace domain)',
+  'github': 'GitHub (org)',
+  'gitlab': 'GitLab (group path)',
+};
+
+class _TeamSsoSettings extends StatefulWidget {
+  final String teamSlug;
+
+  const _TeamSsoSettings({required this.teamSlug});
+
+  @override
+  State<_TeamSsoSettings> createState() => _TeamSsoSettingsState();
+}
+
+class _TeamSsoSettingsState extends State<_TeamSsoSettings> {
+  late Future<List<TeamSsoConfig>> _future;
+  final _controllers = {for (final p in _ssoProviders) p: TextEditingController()};
+  final _saving = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _load() {
+    _future = context.read<AuthProvider>().api.getTeamSsoConfigs(widget.teamSlug).then((configs) {
+      for (final config in configs) {
+        _controllers[config.provider]?.text = config.orgMatch;
+      }
+      return configs;
+    });
+  }
+
+  Future<void> _save(String provider) async {
+    final orgMatch = _controllers[provider]!.text.trim();
+    if (orgMatch.isEmpty) return;
+    setState(() => _saving.add(provider));
+    try {
+      final api = context.read<AuthProvider>().api;
+      await api.upsertTeamSsoConfig(
+        teamSlug: widget.teamSlug,
+        provider: provider,
+        orgMatch: orgMatch,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _saving.remove(provider));
+    }
+  }
+
+  Future<void> _remove(String provider) async {
+    setState(() => _saving.add(provider));
+    try {
+      final api = context.read<AuthProvider>().api;
+      await api.deleteTeamSsoConfig(teamSlug: widget.teamSlug, provider: provider);
+      _controllers[provider]?.clear();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _saving.remove(provider));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<TeamSsoConfig>>(
+      future: _future,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: LinearProgressIndicator(),
+          );
+        }
+        return Column(
+          children: [
+            for (final provider in _ssoProviders) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controllers[provider],
+                      decoration: InputDecoration(
+                        labelText: _ssoProviderLabels[provider],
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Save',
+                    icon: _saving.contains(provider)
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.check),
+                    onPressed:
+                        _saving.contains(provider) ? null : () => _save(provider),
+                  ),
+                  IconButton(
+                    tooltip: 'Remove',
+                    icon: const Icon(Icons.close),
+                    onPressed: _saving.contains(provider)
+                        ? null
+                        : () => _remove(provider),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+          ],
+        );
+      },
     );
   }
 }

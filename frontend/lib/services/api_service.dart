@@ -5,6 +5,7 @@ import '../models/user.dart';
 import '../models/group.dart';
 import '../models/brainstorm.dart';
 import '../models/team.dart';
+import '../models/team_sso_config.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -248,6 +249,36 @@ class ApiService {
     );
     final data = await _parseMap(response);
     return data['url'] as String;
+  }
+
+  Future<List<TeamSsoConfig>> getTeamSsoConfigs(String teamSlug) async {
+    final response = await _get(Uri.parse('$baseUrl/teams/$teamSlug/sso'));
+    final list = await _parseList(response);
+    return list
+        .map((c) => TeamSsoConfig.fromJson(c as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<TeamSsoConfig> upsertTeamSsoConfig({
+    required String teamSlug,
+    required String provider,
+    required String orgMatch,
+  }) async {
+    final response = await _put(
+      Uri.parse('$baseUrl/teams/$teamSlug/sso/$provider'),
+      body: json.encode({'org_match': orgMatch}),
+    );
+    final data = await _parseMap(response);
+    return TeamSsoConfig.fromJson(data);
+  }
+
+  Future<void> deleteTeamSsoConfig({
+    required String teamSlug,
+    required String provider,
+  }) async {
+    final response =
+        await _delete(Uri.parse('$baseUrl/teams/$teamSlug/sso/$provider'));
+    await _parseMap(response);
   }
 
   // ── Groups ──────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 *.class
 .env
 .env.*
+!.env.sample
 *.log
 *.pyc
 *.swp

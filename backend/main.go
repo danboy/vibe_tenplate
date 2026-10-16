@@ -44,6 +44,7 @@ func main() {
 	guestHandler := handlers.NewGuestHandler(db)
 	billingHandler := handlers.NewBillingHandler(db)
 	adminHandler := handlers.NewAdminHandler(db)
+	oauthHandler := handlers.NewOAuthHandler(db)
 
 	// WebSocket — auth is handled inside the handler via ?token= query param
 	r.GET("/ws/brainstorms/:id", slideshowHandler.Connect)
@@ -57,6 +58,8 @@ func main() {
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
+			auth.GET("/oauth/:provider/start", oauthHandler.Start)
+			auth.GET("/oauth/:provider/callback", oauthHandler.Callback)
 		}
 
 		// Public guest endpoints — no auth required
@@ -84,6 +87,9 @@ func main() {
 			protected.GET("/teams/:id/groups", groupHandler.ListTeamGroups)
 			protected.POST("/teams/:id/checkout", teamHandler.CreateCheckoutSession)
 			protected.POST("/teams/:id/billing-portal", teamHandler.CreatePortalSession)
+			protected.GET("/teams/:id/sso", teamHandler.ListSSOConfigs)
+			protected.PUT("/teams/:id/sso/:provider", teamHandler.UpsertSSOConfig)
+			protected.DELETE("/teams/:id/sso/:provider", teamHandler.DeleteSSOConfig)
 
 			// Groups
 			protected.GET("/groups", groupHandler.ListGroups)

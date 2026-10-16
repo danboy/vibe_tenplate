@@ -4,6 +4,7 @@ import 'screens/app_shell.dart';
 import 'screens/profile_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
+import 'screens/auth_callback_screen.dart';
 import 'screens/group_workspace_screen.dart';
 import 'screens/group_detail_screen.dart';
 import 'screens/join_screen.dart';
@@ -20,8 +21,9 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
       redirect: (context, state) {
         if (auth.isLoading) return null;
         final loc = state.matchedLocation;
-        final isOnAuthPage =
-            loc.startsWith('/auth/login') || loc.startsWith('/auth/register');
+        final isOnAuthPage = loc.startsWith('/auth/login') ||
+            loc.startsWith('/auth/register') ||
+            loc.startsWith('/auth/callback');
         // Slideshow handles guest access internally — don't redirect to login
         final isSlideshow =
             loc.contains('/brainstorms/') && loc.startsWith('/groups/');
@@ -49,6 +51,13 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
         GoRoute(
             path: '/auth/register',
             builder: (_, __) => const RegisterScreen()),
+        GoRoute(
+          path: '/auth/callback',
+          builder: (_, state) => AuthCallbackScreen(
+            token: state.uri.queryParameters['token'],
+            redirect: state.uri.queryParameters['redirect'],
+          ),
+        ),
 
         GoRoute(
           path: '/join',

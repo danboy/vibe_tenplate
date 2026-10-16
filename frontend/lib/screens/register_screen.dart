@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/error_banner.dart';
+import '../widgets/sso_buttons.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -145,6 +146,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           )
                         : const Text('Create Account'),
                   ),
+                  const SizedBox(height: 24),
+                  const SsoButtons(),
                 ],
               ),
             ),
