@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/team.dart';
 import '../models/team_sso_config.dart';
+import '../widgets/team_goals_section.dart';
+import '../widgets/team_integrations_section.dart';
 import 'app_shell.dart';
 
 class TeamDetailScreen extends StatefulWidget {
@@ -80,6 +82,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
           final team = snap.data!;
           final me = context.read<AuthProvider>().user!;
           final isOwner = team.ownerId == me.id;
+          final canManageGoals = isOwner ||
+              team.members
+                      .where((x) => x.id == me.id)
+                      .firstOrNull
+                      ?.role ==
+                  'editor';
 
           return Scaffold(
             appBar: AppBar(
@@ -133,6 +141,21 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         teamSlug: team.slug,
                         onRoleChanged: _refresh,
                       )),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Goals',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  TeamGoalsSection(
+                    team: team,
+                    isOwner: isOwner,
+                    canManage: canManageGoals,
+                    onGoalStyleChanged: _refresh,
+                  ),
                   if (isOwner) ...[
                     const SizedBox(height: 24),
                     Text(
@@ -169,6 +192,25 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     ),
                     const SizedBox(height: 12),
                     _TeamSsoSettings(teamSlug: team.slug),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Export integrations',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Connect GitHub or Asana so brainstorms in this team\'s groups '
+                      'can export their note clusters as issues or tasks.',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 12),
+                    TeamIntegrationsSection(teamSlug: team.slug),
                   ],
                 ],
               ),

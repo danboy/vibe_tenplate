@@ -45,6 +45,9 @@ func main() {
 	billingHandler := handlers.NewBillingHandler(db)
 	adminHandler := handlers.NewAdminHandler(db)
 	oauthHandler := handlers.NewOAuthHandler(db)
+	goalHandler := handlers.NewGoalHandler(db)
+	integrationHandler := handlers.NewIntegrationHandler(db)
+	exportHandler := handlers.NewExportHandler(db)
 
 	// WebSocket — auth is handled inside the handler via ?token= query param
 	r.GET("/ws/brainstorms/:id", slideshowHandler.Connect)
@@ -69,6 +72,15 @@ func main() {
 			guest.POST("/brainstorms/:id/join", guestHandler.GuestJoin)
 		}
 
+		// Integration OAuth callback — the provider redirects the browser
+		// here directly, with no app session attached.
+		api.GET("/integrations/oauth/:provider/callback", integrationHandler.Callback)
+
+		// StartConnect is a full-page browser navigation, so it can't carry
+		// an Authorization header — it authenticates via ?token= instead
+		// (see handlers/integrations.go).
+		api.GET("/teams/:id/integrations/:provider/start", integrationHandler.StartConnect)
+
 		protected := api.Group("/")
 		protected.Use(middleware.AuthMiddleware())
 		{
@@ -90,6 +102,17 @@ func main() {
 			protected.GET("/teams/:id/sso", teamHandler.ListSSOConfigs)
 			protected.PUT("/teams/:id/sso/:provider", teamHandler.UpsertSSOConfig)
 			protected.DELETE("/teams/:id/sso/:provider", teamHandler.DeleteSSOConfig)
+			protected.PATCH("/teams/:id/goal-style", teamHandler.UpdateGoalStyle)
+			protected.GET("/teams/:id/goals", goalHandler.ListGoals)
+			protected.POST("/teams/:id/goals", goalHandler.CreateGoal)
+			protected.PUT("/goals/:id", goalHandler.UpdateGoal)
+			protected.DELETE("/goals/:id", goalHandler.DeleteGoal)
+			protected.POST("/goals/:id/key-results", goalHandler.CreateKeyResult)
+			protected.PUT("/key-results/:id", goalHandler.UpdateKeyResult)
+			protected.DELETE("/key-results/:id", goalHandler.DeleteKeyResult)
+			protected.GET("/teams/:id/integrations", integrationHandler.ListIntegrations)
+			protected.PUT("/teams/:id/integrations/:provider", integrationHandler.SetTargetRef)
+			protected.DELETE("/teams/:id/integrations/:provider", integrationHandler.Disconnect)
 
 			// Groups
 			protected.GET("/groups", groupHandler.ListGroups)
@@ -105,6 +128,9 @@ func main() {
 			protected.PATCH("/groups/:id/brainstorms/:bid", brainstormHandler.UpdateBrainstorm)
 			protected.DELETE("/groups/:id/brainstorms/:bid", brainstormHandler.DeleteBrainstorm)
 			protected.PUT("/groups/:id/brainstorms/:bid/presenter", brainstormHandler.SetPresenter)
+			protected.POST("/groups/:id/brainstorms/:bid/export", exportHandler.Export)
+			protected.GET("/groups/:id/brainstorms/:bid/export", exportHandler.ListExportRuns)
+			protected.GET("/groups/:id/integrations", integrationHandler.ListIntegrationsForGroup)
 
 			// Admin routes
 			admin := protected.Group("/admin")

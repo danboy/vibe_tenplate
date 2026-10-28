@@ -20,6 +20,7 @@ type Team struct {
 	JoinCode             string  `json:"join_code"   gorm:"type:text"`
 	Plan                 string  `json:"plan"        gorm:"type:text;not null;default:'free'"`
 	StripeSubscriptionID string  `json:"-"           gorm:"type:text"`
+	GoalStyle            string  `json:"goal_style"  gorm:"type:text;not null;default:'kpi'"`
 	Members []User  `json:"members,omitempty" gorm:"many2many:team_members;"`
 	Groups  []Group `json:"groups,omitempty"  gorm:"foreignKey:TeamID"`
 }

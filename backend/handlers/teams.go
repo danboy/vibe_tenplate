@@ -48,6 +48,7 @@ type TeamResponse struct {
 	Description string               `json:"description"`
 	OwnerID     string               `json:"owner_id"`
 	Plan        string               `json:"plan"`
+	GoalStyle   string               `json:"goal_style"`
 	IsPrivate   bool                 `json:"is_private"`
 	JoinCode    string               `json:"join_code,omitempty"`
 	MemberCount int                  `json:"member_count"`
@@ -83,6 +84,10 @@ func teamToResponse(t models.Team, userID string, includeMembers bool, roleMap m
 	if plan == "" {
 		plan = "free"
 	}
+	goalStyle := t.GoalStyle
+	if goalStyle == "" {
+		goalStyle = "kpi"
+	}
 	joinCode := ""
 	if t.OwnerID == userID {
 		joinCode = t.JoinCode
@@ -94,6 +99,7 @@ func teamToResponse(t models.Team, userID string, includeMembers bool, roleMap m
 		Description: t.Description,
 		OwnerID:     t.OwnerID,
 		Plan:        plan,
+		GoalStyle:   goalStyle,
 		IsPrivate:   t.IsPrivate,
 		JoinCode:    joinCode,
 		MemberCount: len(t.Members),
@@ -156,6 +162,7 @@ func (h *TeamHandler) CreateTeam(c *gin.Context) {
 		Description: team.Description,
 		OwnerID:     team.OwnerID,
 		Plan:        "free",
+		GoalStyle:   "kpi",
 		IsPrivate:   team.IsPrivate,
 		JoinCode:    team.JoinCode,
 		MemberCount: 1,
@@ -445,6 +452,33 @@ func (h *TeamHandler) CreateCheckoutSession(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"url": s.URL})
+}
+
+// ── Goals ────────────────────────────────────────────────────────────────────
+
+type UpdateGoalStyleRequest struct {
+	GoalStyle string `json:"goal_style" binding:"required,oneof=kpi okr"`
+}
+
+func (h *TeamHandler) UpdateGoalStyle(c *gin.Context) {
+	userID := c.MustGet("userID").(string)
+	team, ok := h.requireOwner(c, c.Param("id"), userID)
+	if !ok {
+		return
+	}
+
+	var req UpdateGoalStyleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "goal_style must be 'kpi' or 'okr'"})
+		return
+	}
+
+	if err := h.db.Model(team).Update("goal_style", req.GoalStyle).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update goal style"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"goal_style": req.GoalStyle})
 }
 
 // ── SSO auto-join ────────────────────────────────────────────────────────────

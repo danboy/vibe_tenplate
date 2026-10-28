@@ -780,6 +780,14 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           ],
         ),
         actions: [
+          if (isPresenter && enabledSlides.isNotEmpty && _slide == enabledSlides.last)
+            IconButton(
+              icon: const Icon(Icons.ios_share),
+              tooltip: 'Export',
+              onPressed: () => context.push(
+                '/groups/${widget.groupSlug}/brainstorms/${widget.brainstormSlug}/export',
+              ),
+            ),
           if (canAssign)
             IconButton(
               icon: const Icon(Icons.switch_account_outlined),

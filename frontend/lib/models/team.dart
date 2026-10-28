@@ -5,6 +5,7 @@ class Team {
   final String description;
   final String ownerId;
   final String plan;
+  final String goalStyle;
   final bool isPrivate;
   final String? joinCode;
   final int memberCount;
@@ -18,6 +19,7 @@ class Team {
     required this.description,
     required this.ownerId,
     this.plan = 'free',
+    this.goalStyle = 'kpi',
     this.isPrivate = false,
     this.joinCode,
     this.memberCount = 0,
@@ -32,6 +34,7 @@ class Team {
         description: json['description'] as String? ?? '',
         ownerId: json['owner_id'] as String,
         plan: json['plan'] as String? ?? 'free',
+        goalStyle: json['goal_style'] as String? ?? 'kpi',
         isPrivate: json['is_private'] as bool? ?? false,
         joinCode: json['join_code'] as String?,
         memberCount: json['member_count'] as int? ?? 0,

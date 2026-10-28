@@ -6,6 +6,9 @@ import '../models/group.dart';
 import '../models/brainstorm.dart';
 import '../models/team.dart';
 import '../models/team_sso_config.dart';
+import '../models/goal.dart';
+import '../models/team_integration.dart';
+import '../models/export_run.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -279,6 +282,192 @@ class ApiService {
     final response =
         await _delete(Uri.parse('$baseUrl/teams/$teamSlug/sso/$provider'));
     await _parseMap(response);
+  }
+
+  // ── Goals ───────────────────────────────────────────────────────────────────
+
+  Future<void> updateTeamGoalStyle({
+    required String teamSlug,
+    required String goalStyle,
+  }) async {
+    final response = await _patch(
+      Uri.parse('$baseUrl/teams/$teamSlug/goal-style'),
+      body: json.encode({'goal_style': goalStyle}),
+    );
+    await _parseMap(response);
+  }
+
+  Future<List<Goal>> listGoals(String teamSlug) async {
+    final response = await _get(Uri.parse('$baseUrl/teams/$teamSlug/goals'));
+    final list = await _parseList(response);
+    return list.map((g) => Goal.fromJson(g as Map<String, dynamic>)).toList();
+  }
+
+  Future<Goal> createGoal({
+    required String teamSlug,
+    required String title,
+    String unit = '',
+    double targetValue = 0,
+    double currentValue = 0,
+    List<Map<String, dynamic>>? keyResults,
+  }) async {
+    final response = await _post(
+      Uri.parse('$baseUrl/teams/$teamSlug/goals'),
+      body: json.encode({
+        'title': title,
+        'unit': unit,
+        'target_value': targetValue,
+        'current_value': currentValue,
+        if (keyResults != null) 'key_results': keyResults,
+      }),
+    );
+    final data = await _parseMap(response);
+    return Goal.fromJson(data);
+  }
+
+  Future<Goal> updateGoal({
+    required String goalId,
+    required String title,
+    String unit = '',
+    double targetValue = 0,
+    double currentValue = 0,
+  }) async {
+    final response = await _put(
+      Uri.parse('$baseUrl/goals/$goalId'),
+      body: json.encode({
+        'title': title,
+        'unit': unit,
+        'target_value': targetValue,
+        'current_value': currentValue,
+      }),
+    );
+    final data = await _parseMap(response);
+    return Goal.fromJson(data);
+  }
+
+  Future<void> deleteGoal(String goalId) async {
+    final response = await _delete(Uri.parse('$baseUrl/goals/$goalId'));
+    await _parseMap(response);
+  }
+
+  Future<KeyResult> createKeyResult({
+    required String goalId,
+    required String title,
+    String unit = '',
+    double targetValue = 0,
+    double currentValue = 0,
+  }) async {
+    final response = await _post(
+      Uri.parse('$baseUrl/goals/$goalId/key-results'),
+      body: json.encode({
+        'title': title,
+        'unit': unit,
+        'target_value': targetValue,
+        'current_value': currentValue,
+      }),
+    );
+    final data = await _parseMap(response);
+    return KeyResult.fromJson(data);
+  }
+
+  Future<KeyResult> updateKeyResult({
+    required String keyResultId,
+    required String title,
+    String unit = '',
+    double targetValue = 0,
+    double currentValue = 0,
+  }) async {
+    final response = await _put(
+      Uri.parse('$baseUrl/key-results/$keyResultId'),
+      body: json.encode({
+        'title': title,
+        'unit': unit,
+        'target_value': targetValue,
+        'current_value': currentValue,
+      }),
+    );
+    final data = await _parseMap(response);
+    return KeyResult.fromJson(data);
+  }
+
+  Future<void> deleteKeyResult(String keyResultId) async {
+    final response =
+        await _delete(Uri.parse('$baseUrl/key-results/$keyResultId'));
+    await _parseMap(response);
+  }
+
+  // ── Export integrations ──────────────────────────────────────────────────────
+
+  Future<List<TeamIntegration>> listTeamIntegrations(String teamSlug) async {
+    final response = await _get(Uri.parse('$baseUrl/teams/$teamSlug/integrations'));
+    final list = await _parseList(response);
+    return list
+        .map((i) => TeamIntegration.fromJson(i as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Same shape as [listTeamIntegrations], but reachable by any group member
+  /// via the group's slug — the group's own team isn't otherwise known
+  /// client-side.
+  Future<List<TeamIntegration>> listGroupIntegrations(String groupSlug) async {
+    final response = await _get(Uri.parse('$baseUrl/groups/$groupSlug/integrations'));
+    final list = await _parseList(response);
+    return list
+        .map((i) => TeamIntegration.fromJson(i as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Builds the full-page-navigation URL that starts the OAuth connect flow.
+  /// Unlike other calls this can't use an Authorization header (it's a plain
+  /// browser navigation), so the session token rides along as `?token=`.
+  String integrationConnectUrl(String teamSlug, String provider) {
+    return Uri.parse('$baseUrl/teams/$teamSlug/integrations/$provider/start')
+        .replace(queryParameters: {if (token != null) 'token': token!})
+        .toString();
+  }
+
+  Future<void> setIntegrationTargetRef({
+    required String teamSlug,
+    required String provider,
+    required String targetRef,
+  }) async {
+    final response = await _put(
+      Uri.parse('$baseUrl/teams/$teamSlug/integrations/$provider'),
+      body: json.encode({'target_ref': targetRef}),
+    );
+    await _parseMap(response);
+  }
+
+  Future<void> disconnectIntegration({
+    required String teamSlug,
+    required String provider,
+  }) async {
+    final response = await _delete(
+        Uri.parse('$baseUrl/teams/$teamSlug/integrations/$provider'));
+    await _parseMap(response);
+  }
+
+  Future<ExportRun> exportBrainstorm({
+    required String groupSlug,
+    required String brainstormSlug,
+    required String provider,
+  }) async {
+    final response = await _post(
+      Uri.parse('$baseUrl/groups/$groupSlug/brainstorms/$brainstormSlug/export'),
+      body: json.encode({'provider': provider}),
+    );
+    final data = await _parseMap(response);
+    return ExportRun.fromJson(data);
+  }
+
+  Future<List<ExportRun>> listExportRuns({
+    required String groupSlug,
+    required String brainstormSlug,
+  }) async {
+    final response = await _get(
+        Uri.parse('$baseUrl/groups/$groupSlug/brainstorms/$brainstormSlug/export'));
+    final list = await _parseList(response);
+    return list.map((r) => ExportRun.fromJson(r as Map<String, dynamic>)).toList();
   }
 
   // ── Groups ──────────────────────────────────────────────────────────────────

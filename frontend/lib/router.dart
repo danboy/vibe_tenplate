@@ -5,6 +5,8 @@ import 'screens/profile_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/auth_callback_screen.dart';
+import 'screens/integration_callback_screen.dart';
+import 'screens/brainstorm_export_screen.dart';
 import 'screens/group_workspace_screen.dart';
 import 'screens/group_detail_screen.dart';
 import 'screens/join_screen.dart';
@@ -60,6 +62,13 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
         ),
 
         GoRoute(
+          path: '/integrations/callback',
+          builder: (_, state) => IntegrationCallbackScreen(
+            connected: state.uri.queryParameters['connected'],
+          ),
+        ),
+
+        GoRoute(
           path: '/join',
           builder: (_, state) => JoinScreen(
             code: state.uri.queryParameters['code'] ?? '',
@@ -79,6 +88,15 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
             groupSlug: state.pathParameters['groupSlug']!,
             brainstormSlug: state.pathParameters['brainstormSlug']!,
           ),
+          routes: [
+            GoRoute(
+              path: 'export',
+              builder: (_, state) => BrainstormExportScreen(
+                groupSlug: state.pathParameters['groupSlug']!,
+                brainstormSlug: state.pathParameters['brainstormSlug']!,
+              ),
+            ),
+          ],
         ),
 
         // Shell wraps all other authenticated screens
