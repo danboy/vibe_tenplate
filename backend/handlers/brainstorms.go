@@ -19,8 +19,15 @@ func NewBrainstormHandler(db *gorm.DB) *BrainstormHandler {
 	return &BrainstormHandler{db: db}
 }
 
+// brainstormTypes are the valid values for Brainstorm.Type.
+var brainstormTypes = map[string]bool{
+	"brainstorm": true,
+	"card_sort":  true,
+}
+
 type CreateBrainstormRequest struct {
 	Name             string `json:"name" binding:"required,min=2"`
+	Type             string `json:"type"`
 	Description      string `json:"description"`
 	ProblemStatement string `json:"problem_statement"`
 	EnableProblem    bool   `json:"enable_problem"`
@@ -126,6 +133,15 @@ func (h *BrainstormHandler) CreateBrainstorm(c *gin.Context) {
 		return
 	}
 
+	if req.Type == "" {
+		req.Type = "brainstorm"
+	}
+	if !brainstormTypes[req.Type] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid brainstorm type"})
+		return
+	}
+	isCardSort := req.Type == "card_sort"
+
 	groupPlan := "free"
 	if group.Team != nil && group.Team.Plan != "" {
 		groupPlan = group.Team.Plan
@@ -150,6 +166,14 @@ func (h *BrainstormHandler) CreateBrainstorm(c *gin.Context) {
 		req.InterstitialPrioritise = ""
 	}
 
+	if isCardSort {
+		// Card sorting is just two slides — add cards, then group them.
+		// None of the brainstorm-pipeline stages apply.
+		req.EnableProblem = false
+		req.EnableVote = false
+		req.EnablePrioritise = false
+	}
+
 	slug := utils.UniqueSlug(utils.Slugify(req.Name), func(s string) bool {
 		var count int64
 		h.db.Model(&models.Brainstorm{}).Where("group_id = ? AND slug = ?", group.ID, s).Count(&count)
@@ -158,6 +182,7 @@ func (h *BrainstormHandler) CreateBrainstorm(c *gin.Context) {
 
 	brainstorm := models.Brainstorm{
 		Name:                   req.Name,
+		Type:                   req.Type,
 		Slug:                   slug,
 		Description:            req.Description,
 		ProblemStatement:       req.ProblemStatement,
@@ -303,6 +328,14 @@ func (h *BrainstormHandler) UpdateBrainstorm(c *gin.Context) {
 		req.InterstitialGroup = ""
 		req.InterstitialVote = ""
 		req.InterstitialPrioritise = ""
+	}
+
+	if brainstorm.Type == "card_sort" {
+		// Type is immutable after creation and card sorting never has
+		// the brainstorm-pipeline stages, regardless of plan.
+		req.EnableProblem = false
+		req.EnableVote = false
+		req.EnablePrioritise = false
 	}
 
 	h.db.Model(&brainstorm).UpdateColumns(map[string]any{

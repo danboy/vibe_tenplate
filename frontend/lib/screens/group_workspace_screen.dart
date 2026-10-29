@@ -65,6 +65,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     final problemCtrl = TextEditingController();
     final iCtrl = _InterstitialControllers();
     final formKey = GlobalKey<FormState>();
+    var type = 'brainstorm';
     var enableProblem = true;
     var enableVote = true;
     var enablePrioritise = true;
@@ -83,10 +84,27 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 'brainstorm',
+                        label: Text('Brainstorm'),
+                        icon: Icon(Icons.folder_outlined),
+                      ),
+                      ButtonSegment(
+                        value: 'card_sort',
+                        label: Text('Card sorting'),
+                        icon: Icon(Icons.style_outlined),
+                      ),
+                    ],
+                    selected: {type},
+                    onSelectionChanged: (s) => setLocal(() => type = s.first),
+                  ),
+                  const SizedBox(height: 12),
                   TextFormField(
                     controller: nameCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Brainstorm name',
+                      labelText: 'Name',
                       border: OutlineInputBorder(),
                     ),
                     validator: (v) =>
@@ -102,49 +120,53 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                     ),
                     maxLines: 3,
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: problemCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Problem statement (optional)',
-                      border: OutlineInputBorder(),
+                  if (type == 'brainstorm') ...[
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: problemCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Problem statement (optional)',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 3,
                     ),
-                    maxLines: 3,
-                  ),
+                  ],
                   if (canCustomize) ...[
-                    const SizedBox(height: 16),
-                    Text('Optional slides',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey[600])),
-                    const SizedBox(height: 4),
-                    CheckboxListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Problem Statement'),
-                      subtitle: const Text('Collaborative problem statement editor'),
-                      value: enableProblem,
-                      onChanged: (v) => setLocal(() => enableProblem = v ?? true),
-                    ),
-                    CheckboxListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Vote'),
-                      subtitle: const Text('Team members place stars on notes'),
-                      value: enableVote,
-                      onChanged: (v) => setLocal(() => enableVote = v ?? true),
-                    ),
-                    CheckboxListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Prioritise'),
-                      subtitle: const Text('Cost vs value matrix'),
-                      value: enablePrioritise,
-                      onChanged: (v) =>
-                          setLocal(() => enablePrioritise = v ?? true),
-                    ),
-                    const Divider(height: 20),
+                    if (type == 'brainstorm') ...[
+                      const SizedBox(height: 16),
+                      Text('Optional slides',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[600])),
+                      const SizedBox(height: 4),
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Problem Statement'),
+                        subtitle: const Text('Collaborative problem statement editor'),
+                        value: enableProblem,
+                        onChanged: (v) => setLocal(() => enableProblem = v ?? true),
+                      ),
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Vote'),
+                        subtitle: const Text('Team members place stars on notes'),
+                        value: enableVote,
+                        onChanged: (v) => setLocal(() => enableVote = v ?? true),
+                      ),
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Prioritise'),
+                        subtitle: const Text('Cost vs value matrix'),
+                        value: enablePrioritise,
+                        onChanged: (v) =>
+                            setLocal(() => enablePrioritise = v ?? true),
+                      ),
+                      const Divider(height: 20),
+                    ],
                     CheckboxListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
@@ -156,9 +178,10 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                     const SizedBox(height: 8),
                     _InterstitialSection(
                       controllers: iCtrl,
-                      enableProblem: enableProblem,
-                      enableVote: enableVote,
-                      enablePrioritise: enablePrioritise,
+                      enableProblem: type == 'brainstorm' && enableProblem,
+                      enableVote: type == 'brainstorm' && enableVote,
+                      enablePrioritise: type == 'brainstorm' && enablePrioritise,
+                      isCardSort: type == 'card_sort',
                     ),
                   ] else ...[
                     const SizedBox(height: 12),
@@ -212,11 +235,12 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
       await api.createBrainstorm(
         groupSlug: widget.groupSlug,
         name: nameCtrl.text.trim(),
+        type: type,
         description: descCtrl.text.trim(),
-        problemStatement: problemCtrl.text.trim(),
-        enableProblem: enableProblem,
-        enableVote: enableVote,
-        enablePrioritise: enablePrioritise,
+        problemStatement: type == 'brainstorm' ? problemCtrl.text.trim() : '',
+        enableProblem: type == 'brainstorm' && enableProblem,
+        enableVote: type == 'brainstorm' && enableVote,
+        enablePrioritise: type == 'brainstorm' && enablePrioritise,
         guestsEnabled: guestsEnabled,
         interstitialProblem: iCtrl.problem.text.trim(),
         interstitialBrainstorm: iCtrl.brainstorm.text.trim(),
@@ -266,10 +290,20 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Chip(
+                    avatar: Icon(
+                        brainstorm.isCardSort
+                            ? Icons.style_outlined
+                            : Icons.folder_outlined,
+                        size: 18),
+                    label: Text(
+                        brainstorm.isCardSort ? 'Card sorting' : 'Brainstorm'),
+                  ),
+                  const SizedBox(height: 12),
                   TextFormField(
                     controller: nameCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Brainstorm name',
+                      labelText: 'Name',
                       border: OutlineInputBorder(),
                     ),
                     validator: (v) =>
@@ -285,49 +319,53 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                     ),
                     maxLines: 3,
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: problemCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Problem statement (optional)',
-                      border: OutlineInputBorder(),
+                  if (!brainstorm.isCardSort) ...[
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: problemCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Problem statement (optional)',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 3,
                     ),
-                    maxLines: 3,
-                  ),
+                  ],
                   if (canCustomize) ...[
-                    const SizedBox(height: 16),
-                    Text('Optional slides',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey[600])),
-                    const SizedBox(height: 4),
-                    CheckboxListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Problem Statement'),
-                      subtitle: const Text('Collaborative problem statement editor'),
-                      value: enableProblem,
-                      onChanged: (v) => setLocal(() => enableProblem = v ?? true),
-                    ),
-                    CheckboxListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Vote'),
-                      subtitle: const Text('Team members place stars on notes'),
-                      value: enableVote,
-                      onChanged: (v) => setLocal(() => enableVote = v ?? true),
-                    ),
-                    CheckboxListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Prioritise'),
-                      subtitle: const Text('Cost vs value matrix'),
-                      value: enablePrioritise,
-                      onChanged: (v) =>
-                          setLocal(() => enablePrioritise = v ?? true),
-                    ),
-                    const Divider(height: 20),
+                    if (!brainstorm.isCardSort) ...[
+                      const SizedBox(height: 16),
+                      Text('Optional slides',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[600])),
+                      const SizedBox(height: 4),
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Problem Statement'),
+                        subtitle: const Text('Collaborative problem statement editor'),
+                        value: enableProblem,
+                        onChanged: (v) => setLocal(() => enableProblem = v ?? true),
+                      ),
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Vote'),
+                        subtitle: const Text('Team members place stars on notes'),
+                        value: enableVote,
+                        onChanged: (v) => setLocal(() => enableVote = v ?? true),
+                      ),
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Prioritise'),
+                        subtitle: const Text('Cost vs value matrix'),
+                        value: enablePrioritise,
+                        onChanged: (v) =>
+                            setLocal(() => enablePrioritise = v ?? true),
+                      ),
+                      const Divider(height: 20),
+                    ],
                     CheckboxListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
@@ -339,9 +377,10 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                     const SizedBox(height: 8),
                     _InterstitialSection(
                       controllers: iCtrl,
-                      enableProblem: enableProblem,
-                      enableVote: enableVote,
-                      enablePrioritise: enablePrioritise,
+                      enableProblem: !brainstorm.isCardSort && enableProblem,
+                      enableVote: !brainstorm.isCardSort && enableVote,
+                      enablePrioritise: !brainstorm.isCardSort && enablePrioritise,
+                      isCardSort: brainstorm.isCardSort,
                     ),
                   ] else ...[
                     const SizedBox(height: 12),
@@ -397,10 +436,10 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
         brainstormSlug: brainstorm.slug,
         name: nameCtrl.text.trim(),
         description: descCtrl.text.trim(),
-        problemStatement: problemCtrl.text.trim(),
-        enableProblem: enableProblem,
-        enableVote: enableVote,
-        enablePrioritise: enablePrioritise,
+        problemStatement: brainstorm.isCardSort ? '' : problemCtrl.text.trim(),
+        enableProblem: !brainstorm.isCardSort && enableProblem,
+        enableVote: !brainstorm.isCardSort && enableVote,
+        enablePrioritise: !brainstorm.isCardSort && enablePrioritise,
         guestsEnabled: guestsEnabled,
         interstitialProblem: iCtrl.problem.text.trim(),
         interstitialBrainstorm: iCtrl.brainstorm.text.trim(),
@@ -646,7 +685,10 @@ class _ProjectCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 backgroundColor: theme.colorScheme.secondaryContainer,
-                child: Icon(Icons.folder,
+                child: Icon(
+                    brainstorm.isCardSort
+                        ? Icons.style_outlined
+                        : Icons.folder,
                     color: theme.colorScheme.onSecondaryContainer),
               ),
               const SizedBox(width: 12),
@@ -785,12 +827,14 @@ class _InterstitialSection extends StatelessWidget {
   final bool enableProblem;
   final bool enableVote;
   final bool enablePrioritise;
+  final bool isCardSort;
 
   const _InterstitialSection({
     required this.controllers,
     required this.enableProblem,
     required this.enableVote,
     required this.enablePrioritise,
+    this.isCardSort = false,
   });
 
   @override
@@ -816,7 +860,8 @@ class _InterstitialSection extends StatelessWidget {
           _interstitialField(controllers.problem, 'Problem Statement'),
           const SizedBox(height: 12),
         ],
-        _interstitialField(controllers.brainstorm, 'Brainstorm'),
+        _interstitialField(
+            controllers.brainstorm, isCardSort ? 'Add cards' : 'Brainstorm'),
         const SizedBox(height: 12),
         _interstitialField(controllers.group, 'Group'),
         if (enableVote) ...[

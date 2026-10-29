@@ -582,6 +582,7 @@ class ApiService {
   Future<Brainstorm> createBrainstorm({
     required String groupSlug,
     required String name,
+    String type = 'brainstorm',
     required String description,
     required String problemStatement,
     required bool enableProblem,
@@ -598,6 +599,7 @@ class ApiService {
       Uri.parse('$baseUrl/groups/$groupSlug/brainstorms'),
       body: json.encode({
         'name': name,
+        'type': type,
         'description': description,
         'problem_statement': problemStatement,
         'enable_problem': enableProblem,

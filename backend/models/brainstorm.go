@@ -20,6 +20,7 @@ type Brainstorm struct {
 	Creator     *User          `json:"creator,omitempty"   gorm:"foreignKey:CreatedBy"`
 	PresenterID      *string        `json:"presenter_id"        gorm:"type:text"`
 	Presenter        *User          `json:"presenter,omitempty" gorm:"foreignKey:PresenterID"`
+	Type               string `json:"type"               gorm:"not null;default:'brainstorm'"`
 	EnableProblem      bool   `json:"enable_problem"      gorm:"not null;default:true"`
 	EnableVote         bool   `json:"enable_vote"         gorm:"not null;default:true"`
 	EnablePrioritise   bool   `json:"enable_prioritise"   gorm:"not null;default:true"`

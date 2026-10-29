@@ -9,6 +9,7 @@ class Brainstorm {
   final DateTime createdAt;
   final String? presenterId;
   final String? presenterUsername;
+  final String type;
   final bool enableProblem;
   final bool enableVote;
   final bool enablePrioritise;
@@ -32,6 +33,7 @@ class Brainstorm {
     required this.createdAt,
     this.presenterId,
     this.presenterUsername,
+    this.type = 'brainstorm',
     this.enableProblem = true,
     this.enableVote = true,
     this.enablePrioritise = true,
@@ -59,6 +61,8 @@ class Brainstorm {
     return value.isEmpty ? null : value;
   }
 
+  bool get isCardSort => type == 'card_sort';
+
   factory Brainstorm.fromJson(Map<String, dynamic> json) => Brainstorm(
         id: json['id'] as String,
         slug: json['slug'] as String,
@@ -72,6 +76,7 @@ class Brainstorm {
         presenterId: json['presenter_id'] as String?,
         presenterUsername:
             (json['presenter'] as Map<String, dynamic>?)?['username'] as String?,
+        type: json['type'] as String? ?? 'brainstorm',
         enableProblem: json['enable_problem'] as bool? ?? true,
         enableVote: json['enable_vote'] as bool? ?? true,
         enablePrioritise: json['enable_prioritise'] as bool? ?? true,
@@ -97,6 +102,7 @@ class Brainstorm {
         createdAt: createdAt,
         presenterId: clearPresenter ? null : (presenterId ?? this.presenterId),
         presenterUsername: clearPresenter ? null : (presenterUsername ?? this.presenterUsername),
+        type: type,
         enableProblem: enableProblem,
         enableVote: enableVote,
         enablePrioritise: enablePrioritise,

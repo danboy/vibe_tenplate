@@ -279,6 +279,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
               .map((n) => StickyNote.fromJson(n as Map<String, dynamic>))
               .toList();
           _slide = (p['slide'] as int?) ?? 0;
+          if (_brainstorm?.enableProblem == false && _slide == 0) _slide = 1;
           _matrixPositions.clear();
           for (final note in _notes) {
             if (note.matrixCost != null && note.matrixValue != null) {
@@ -581,7 +582,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('New Sticky Note'),
+          title: Text(_brainstorm?.isCardSort ?? false ? 'New Card' : 'New Sticky Note'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -825,7 +826,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           : FloatingActionButton.extended(
               onPressed: _showAddNoteDialog,
               icon: const Icon(Icons.add),
-              label: const Text('Add Note'),
+              label: Text(
+                  _brainstorm?.isCardSort ?? false ? 'Add Card' : 'Add Note'),
             ),
       body: Column(
         children: [
@@ -834,6 +836,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
             enabled: isPresenter,
             enabledSlides: enabledSlides,
             onSlideChanged: _changeSlide,
+            isCardSort: _brainstorm?.isCardSort ?? false,
           ),
           Expanded(
             child: Stack(
@@ -918,6 +921,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                                     currentUserId: currentUserId,
                                     isPresenter: isPresenter,
                                     isOwner: canAssign,
+                                    isCardSort: _brainstorm?.isCardSort ?? false,
                                   ),
                                 ),
                               ),
@@ -926,6 +930,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                 if (_showInterstitial)
                   _SlideInterstitial(
                     slide: _slide,
+                    isCardSort: _brainstorm?.isCardSort ?? false,
                     customDescription: _brainstorm?.interstitialForSlide(_slide),
                     onDismiss: () {
                       setState(() => _dismissedInterstitials.add(_slide));
@@ -981,21 +986,59 @@ const _interstitials = [
   ),
 ];
 
+const _cardSortInterstitials = [
+  (
+    icon: Icons.lightbulb_outline,
+    title: 'Problem Statement',
+    description: '',
+    action: 'Got it',
+  ),
+  (
+    icon: Icons.style_outlined,
+    title: 'Add Cards',
+    description:
+        'Add as many cards as you like. Quantity over quality — no card is too small at this stage.',
+    action: 'Start adding cards',
+  ),
+  (
+    icon: Icons.hub_outlined,
+    title: 'Group',
+    description:
+        'Drag similar cards onto each other to sort them into categories. Look for patterns across the cards.',
+    action: 'Start grouping',
+  ),
+  (
+    icon: Icons.how_to_vote_outlined,
+    title: 'Vote',
+    description: '',
+    action: 'Start voting',
+  ),
+  (
+    icon: Icons.grid_view_outlined,
+    title: 'Prioritise',
+    description: '',
+    action: 'Start prioritising',
+  ),
+];
+
 class _SlideInterstitial extends StatelessWidget {
   final int slide;
   final VoidCallback onDismiss;
   final String? customDescription;
+  final bool isCardSort;
 
   const _SlideInterstitial({
     required this.slide,
     required this.onDismiss,
     this.customDescription,
+    this.isCardSort = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final info = _interstitials[slide.clamp(0, _interstitials.length - 1)];
+    final list = isCardSort ? _cardSortInterstitials : _interstitials;
+    final info = list[slide.clamp(0, list.length - 1)];
     final description = customDescription ?? info.description;
 
     return Container(
@@ -1070,6 +1113,7 @@ class _SlideInterstitial extends StatelessWidget {
 // ─── Slide tab bar ────────────────────────────────────────────────────────────
 
 const _slideLabels = ['Problem', 'Brainstorm', 'Group', 'Vote', 'Prioritise'];
+const _cardSortSlideLabels = ['Problem', 'Add Cards', 'Group', 'Vote', 'Prioritise'];
 const _slideIcons = [Icons.lightbulb_outline, Icons.sticky_note_2_outlined, Icons.hub_outlined, Icons.how_to_vote_outlined, Icons.grid_view_outlined];
 
 class _SlideTabBar extends StatelessWidget {
@@ -1077,12 +1121,14 @@ class _SlideTabBar extends StatelessWidget {
   final bool enabled;
   final List<int> enabledSlides;
   final void Function(int) onSlideChanged;
+  final bool isCardSort;
 
   const _SlideTabBar({
     required this.currentSlide,
     required this.enabled,
     required this.enabledSlides,
     required this.onSlideChanged,
+    this.isCardSort = false,
   });
 
   @override
@@ -1117,7 +1163,7 @@ class _SlideTabBar extends StatelessWidget {
             final (pos, i) = entry;
             return [
               _SlideTab(
-                label: _slideLabels[i],
+                label: (isCardSort ? _cardSortSlideLabels : _slideLabels)[i],
                 icon: _slideIcons[i],
                 selected: currentSlide == i,
                 showLabel: showLabels,
@@ -1260,6 +1306,7 @@ class _InfiniteCanvas extends StatelessWidget {
   final String currentUserId;
   final bool isPresenter;
   final bool isOwner;
+  final bool isCardSort;
 
   const _InfiniteCanvas({
     required this.notes,
@@ -1280,6 +1327,7 @@ class _InfiniteCanvas extends StatelessWidget {
     required this.currentUserId,
     required this.isPresenter,
     required this.isOwner,
+    this.isCardSort = false,
   });
 
   @override
@@ -1318,15 +1366,23 @@ class _InfiniteCanvas extends StatelessWidget {
                     const SizedBox(height: 16),
                     Text(
                         isGroupingMode
-                            ? 'No notes to group yet'
-                            : 'Start brainstorming!',
+                            ? (isCardSort
+                                ? 'No cards to group yet'
+                                : 'No notes to group yet')
+                            : (isCardSort
+                                ? 'Start adding cards!'
+                                : 'Start brainstorming!'),
                         style: TextStyle(
                             fontSize: 20, color: cs.onSurfaceVariant)),
                     const SizedBox(height: 8),
                     Text(
                         isGroupingMode
-                            ? 'Switch to Brainstorm to add notes first'
-                            : 'Tap + Add Note to place your first idea',
+                            ? (isCardSort
+                                ? 'Switch to Add Cards to add cards first'
+                                : 'Switch to Brainstorm to add notes first')
+                            : (isCardSort
+                                ? 'Tap + Add Card to place your first card'
+                                : 'Tap + Add Note to place your first idea'),
                         style: TextStyle(color: cs.onSurfaceVariant)),
                   ],
                 ),

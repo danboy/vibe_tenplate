@@ -51,6 +51,14 @@ func newHub(brainstormID string, db *gorm.DB) *Hub {
 		db:          db,
 		matrixLocks: make(map[string]string),
 	}
+
+	// Brainstorms with the problem statement stage disabled (e.g. card
+	// sorting) should start on the first enabled slide, not slide 0.
+	var brainstorm models.Brainstorm
+	if err := db.Select("enable_problem").First(&brainstorm, "id = ?", brainstormID).Error; err == nil && !brainstorm.EnableProblem {
+		h.currentSlide = 1
+	}
+
 	go h.run()
 	return h
 }
