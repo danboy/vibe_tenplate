@@ -21,6 +21,7 @@ type Brainstorm struct {
 	PresenterID      *string        `json:"presenter_id"        gorm:"type:text"`
 	Presenter        *User          `json:"presenter,omitempty" gorm:"foreignKey:PresenterID"`
 	Type               string `json:"type"               gorm:"not null;default:'brainstorm'"`
+	RetroStyle         string `json:"retro_style"        gorm:"not null;default:''"`
 	EnableProblem      bool   `json:"enable_problem"      gorm:"not null;default:true"`
 	EnableVote         bool   `json:"enable_vote"         gorm:"not null;default:true"`
 	EnablePrioritise   bool   `json:"enable_prioritise"   gorm:"not null;default:true"`
@@ -29,11 +30,12 @@ type Brainstorm struct {
 	GuestsEnabled bool   `json:"guests_enabled" gorm:"not null;default:false"`
 
 	// Custom interstitial descriptions (empty = use app default)
-	InterstitialProblem    string `json:"interstitial_problem"    gorm:"type:text;not null;default:''"`
-	InterstitialBrainstorm string `json:"interstitial_brainstorm" gorm:"type:text;not null;default:''"`
-	InterstitialGroup      string `json:"interstitial_group"      gorm:"type:text;not null;default:''"`
-	InterstitialVote       string `json:"interstitial_vote"       gorm:"type:text;not null;default:''"`
-	InterstitialPrioritise string `json:"interstitial_prioritise" gorm:"type:text;not null;default:''"`
+	InterstitialProblem     string `json:"interstitial_problem"     gorm:"type:text;not null;default:''"`
+	InterstitialBrainstorm  string `json:"interstitial_brainstorm"  gorm:"type:text;not null;default:''"`
+	InterstitialGroup       string `json:"interstitial_group"       gorm:"type:text;not null;default:''"`
+	InterstitialVote        string `json:"interstitial_vote"        gorm:"type:text;not null;default:''"`
+	InterstitialPrioritise  string `json:"interstitial_prioritise"  gorm:"type:text;not null;default:''"`
+	InterstitialActionItems string `json:"interstitial_action_items" gorm:"type:text;not null;default:''"`
 }
 
 func (b *Brainstorm) BeforeCreate(tx *gorm.DB) error {

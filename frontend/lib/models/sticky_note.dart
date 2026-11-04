@@ -10,6 +10,7 @@ class StickyNote {
   final bool isGroup;
   final double? matrixCost;
   final double? matrixValue;
+  final String? column;
 
   const StickyNote({
     required this.id,
@@ -23,6 +24,7 @@ class StickyNote {
     this.isGroup = false,
     this.matrixCost,
     this.matrixValue,
+    this.column,
   });
 
   factory StickyNote.fromJson(Map<String, dynamic> json) => StickyNote(
@@ -37,6 +39,7 @@ class StickyNote {
         isGroup: json['is_group'] as bool? ?? false,
         matrixCost: (json['matrix_cost'] as num?)?.toDouble(),
         matrixValue: (json['matrix_value'] as num?)?.toDouble(),
+        column: json['column'] as String?,
       );
 
   StickyNote copyWith({
@@ -45,6 +48,8 @@ class StickyNote {
     double? posY,
     String? parentId,
     bool clearParent = false,
+    String? column,
+    bool clearColumn = false,
   }) =>
       StickyNote(
         id: id,
@@ -56,5 +61,8 @@ class StickyNote {
         createdBy: createdBy,
         parentId: clearParent ? null : (parentId ?? this.parentId),
         isGroup: isGroup,
+        matrixCost: matrixCost,
+        matrixValue: matrixValue,
+        column: clearColumn ? null : (column ?? this.column),
       );
 }

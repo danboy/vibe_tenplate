@@ -137,14 +137,16 @@ class ApiService {
     return _parseMap(response);
   }
 
-  /// Joins a brainstorm as a guest and returns a short-lived token.
-  Future<String> guestJoinBrainstorm(String brainstormId, String displayName) async {
+  /// Joins a brainstorm as a guest and returns a short-lived token plus the
+  /// guest's user id (needed locally for ownership checks like blur/edit).
+  Future<(String token, String userId)> guestJoinBrainstorm(
+      String brainstormId, String displayName) async {
     final response = await _post(
       Uri.parse('$baseUrl/guest/brainstorms/$brainstormId/join'),
       body: json.encode({'display_name': displayName}),
     );
     final data = await _parseMap(response);
-    return data['token'] as String;
+    return (data['token'] as String, data['user_id'] as String);
   }
 
   // ── Teams ───────────────────────────────────────────────────────────────────
@@ -583,6 +585,7 @@ class ApiService {
     required String groupSlug,
     required String name,
     String type = 'brainstorm',
+    String retroStyle = '',
     required String description,
     required String problemStatement,
     required bool enableProblem,
@@ -594,12 +597,14 @@ class ApiService {
     String interstitialGroup = '',
     String interstitialVote = '',
     String interstitialPrioritise = '',
+    String interstitialActionItems = '',
   }) async {
     final response = await _post(
       Uri.parse('$baseUrl/groups/$groupSlug/brainstorms'),
       body: json.encode({
         'name': name,
         'type': type,
+        'retro_style': retroStyle,
         'description': description,
         'problem_statement': problemStatement,
         'enable_problem': enableProblem,
@@ -611,6 +616,7 @@ class ApiService {
         'interstitial_group': interstitialGroup,
         'interstitial_vote': interstitialVote,
         'interstitial_prioritise': interstitialPrioritise,
+        'interstitial_action_items': interstitialActionItems,
       }),
     );
     final data = await _parseMap(response);
@@ -632,6 +638,7 @@ class ApiService {
     String interstitialGroup = '',
     String interstitialVote = '',
     String interstitialPrioritise = '',
+    String interstitialActionItems = '',
   }) async {
     final response = await _patch(
       Uri.parse('$baseUrl/groups/$groupSlug/brainstorms/$brainstormSlug'),
@@ -648,6 +655,7 @@ class ApiService {
         'interstitial_group': interstitialGroup,
         'interstitial_vote': interstitialVote,
         'interstitial_prioritise': interstitialPrioritise,
+        'interstitial_action_items': interstitialActionItems,
       }),
     );
     final data = await _parseMap(response);

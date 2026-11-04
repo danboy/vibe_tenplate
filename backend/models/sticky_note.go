@@ -23,6 +23,7 @@ type StickyNote struct {
 	IsGroup     bool           `json:"is_group"`
 	MatrixCost  *float64       `json:"matrix_cost"`
 	MatrixValue *float64       `json:"matrix_value"`
+	Column      *string        `json:"column"      gorm:"type:text"`
 }
 
 func (n *StickyNote) BeforeCreate(tx *gorm.DB) error {

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'dart:ui' show PointMode;
+import 'dart:ui' show ImageFilter, PointMode;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -13,6 +13,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/group.dart';
 import '../models/brainstorm.dart';
 import '../models/sticky_note.dart';
+import '../models/action_item.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 
@@ -34,12 +35,20 @@ class BrainstormSlideshowScreen extends StatefulWidget {
 class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
   WebSocketChannel? _channel;
   List<StickyNote> _notes = [];
+  List<ActionItem> _actionItems = [];
   bool _connected = false;
   final _rng = Random();
   Brainstorm? _brainstorm;
   Group? _group;
   bool _loginRequired = false;
   bool _isGuest = false;
+  String? _guestUserId;
+
+  // The current user's id, whether authenticated or a guest — AuthProvider
+  // is never populated for guest sessions, so ownership checks (blur, vote,
+  // delete) must fall back to the guest id issued at join time.
+  String get _myUserId =>
+      _isGuest ? (_guestUserId ?? '') : (context.read<AuthProvider>().user?.id ?? '');
 
   // 0 = problem, 1 = brainstorm, 2 = group, 3 = vote, 4 = prioritise
   int _slide = 0;
@@ -109,11 +118,14 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
   }
 
   static const _prefsKey = 'dismissed_interstitials';
+  static const _lastColorPrefsKey = 'last_note_color';
+  String _lastNoteColor = _noteColors.first;
 
   @override
   void initState() {
     super.initState();
     _loadDismissed();
+    _loadLastColor();
     _loadAndConnect();
   }
 
@@ -131,6 +143,19 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
       _prefsKey,
       _dismissedInterstitials.map((i) => '$i').toList(),
     );
+  }
+
+  Future<void> _loadLastColor() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_lastColorPrefsKey);
+    if (saved != null && _noteColors.contains(saved) && mounted) {
+      setState(() => _lastNoteColor = saved);
+    }
+  }
+
+  Future<void> _saveLastColor(String color) async {
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setString(_lastColorPrefsKey, color);
   }
 
   Future<void> _loadAndConnect() async {
@@ -162,31 +187,44 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           setState(() => _loginRequired = true);
           return;
         }
-        // Show display name prompt after the frame is drawn.
-        WidgetsBinding.instance.addPostFrameCallback((_) async {
-          if (!mounted) return;
-          final name = await _showGuestNameDialog();
-          if (name == null || !mounted) return;
-          final token = await const ApiService()
-              .guestJoinBrainstorm(info['id'] as String, name);
-          if (!mounted) return;
-          setState(() {
-            _isGuest = true;
-            // Minimal project info for guests
-            _brainstorm = Brainstorm(
-              id: info['id'] as String,
-              slug: widget.brainstormSlug,
-              name: info['name'] as String,
-              description: '',
-              groupId: '',
-              createdBy: '',
-              createdAt: DateTime.now(),
-              enableProblem: info['enable_problem'] as bool? ?? true,
-            );
-            if (_brainstorm?.enableProblem == false && _slide == 0) _slide = 1;
-          });
-          _connect(info['id'] as String, guestToken: token);
+        final name = await _showGuestNameDialog();
+        if (name == null || !mounted) return;
+        final (token, guestUserId) = await const ApiService()
+            .guestJoinBrainstorm(info['id'] as String, name);
+        if (!mounted) return;
+        setState(() {
+          _isGuest = true;
+          _guestUserId = guestUserId;
+          // Minimal project info for guests, but still carrying every field
+          // that affects which slides/UI show (type, retro style, enabled
+          // stages, interstitial copy) — otherwise guests fall back to the
+          // plain-brainstorm defaults and see the wrong slides/no blur.
+          _brainstorm = Brainstorm(
+            id: info['id'] as String,
+            slug: widget.brainstormSlug,
+            name: info['name'] as String,
+            description: '',
+            groupId: '',
+            createdBy: '',
+            createdAt: DateTime.now(),
+            type: info['type'] as String? ?? 'brainstorm',
+            retroStyle: info['retro_style'] as String? ?? '',
+            enableProblem: info['enable_problem'] as bool? ?? true,
+            enableVote: info['enable_vote'] as bool? ?? true,
+            enablePrioritise: info['enable_prioritise'] as bool? ?? true,
+            interstitialProblem: info['interstitial_problem'] as String? ?? '',
+            interstitialBrainstorm:
+                info['interstitial_brainstorm'] as String? ?? '',
+            interstitialGroup: info['interstitial_group'] as String? ?? '',
+            interstitialVote: info['interstitial_vote'] as String? ?? '',
+            interstitialPrioritise:
+                info['interstitial_prioritise'] as String? ?? '',
+            interstitialActionItems:
+                info['interstitial_action_items'] as String? ?? '',
+          );
+          if (_brainstorm?.enableProblem == false && _slide == 0) _slide = 1;
         });
+        _connect(info['id'] as String, guestToken: token);
       } catch (_) {
         if (mounted) setState(() => _loginRequired = true);
       }
@@ -294,6 +332,9 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                 vMap['user_id'] as String] = vMap['count'] as int;
           }
           _problemStatement = (p['problem_statement'] as String?) ?? '';
+          _actionItems = (p['action_items'] as List? ?? [])
+              .map((a) => ActionItem.fromJson(a as Map<String, dynamic>))
+              .toList();
           _wsInitialized = true;
           if (_notes.isNotEmpty && (_slide == 1 || _slide == 2 || _slide == 3)) {
             _centerIfNeeded();
@@ -306,9 +347,12 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           final id = payload['id'] as String;
           final idx = _notes.indexWhere((n) => n.id == id);
           if (idx != -1) {
+            final column = payload['column'] as String?;
             _notes[idx] = _notes[idx].copyWith(
               posX: (payload['pos_x'] as num).toDouble(),
               posY: (payload['pos_y'] as num).toDouble(),
+              column: column,
+              clearColumn: column == null,
             );
           }
 
@@ -368,6 +412,21 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           final userId = payload['user_id'] as String;
           final count = payload['count'] as int;
           _votes.putIfAbsent(noteId, () => {})[userId] = count;
+
+        case 'action_item_create':
+          _actionItems
+              .add(ActionItem.fromJson(payload as Map<String, dynamic>));
+
+        case 'action_item_update':
+          final id = payload['id'] as String;
+          final idx = _actionItems.indexWhere((a) => a.id == id);
+          if (idx != -1) {
+            _actionItems[idx] = _actionItems[idx]
+                .copyWith(content: payload['content'] as String);
+          }
+
+        case 'action_item_delete':
+          _actionItems.removeWhere((a) => a.id == payload['id'] as String);
       }
     });
   }
@@ -397,15 +456,43 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
         }
       });
       for (final m in _notes.where((n) => n.id == id || n.parentId == id)) {
-        _send('note_move', {'id': m.id, 'pos_x': m.posX, 'pos_y': m.posY});
+        _send('note_move', {
+          'id': m.id,
+          'pos_x': m.posX,
+          'pos_y': m.posY,
+          'column': m.column,
+        });
       }
     } else {
-      // Child or ungrouped note moves independently.
+      // Child or ungrouped note moves independently. Column is resent
+      // unchanged so the server's map-update doesn't null it out.
       setState(() {
         _notes[idx] = _notes[idx].copyWith(posX: worldX, posY: worldY);
       });
-      _send('note_move', {'id': id, 'pos_x': worldX, 'pos_y': worldY});
+      _send('note_move', {
+        'id': id,
+        'pos_x': worldX,
+        'pos_y': worldY,
+        'column': note.column,
+      });
     }
+  }
+
+  // Moves a note into a (possibly different) retro column, recomputing its
+  // position from the column's x-band and a vertical stack offset.
+  void _moveNoteToColumn(String id, String column, double posX, double posY) {
+    final idx = _notes.indexWhere((n) => n.id == id);
+    if (idx == -1) return;
+    setState(() {
+      _notes[idx] =
+          _notes[idx].copyWith(posX: posX, posY: posY, column: column);
+    });
+    _send('note_move', {
+      'id': id,
+      'pos_x': posX,
+      'pos_y': posY,
+      'column': column,
+    });
   }
 
   void _ungroupNote(String id) {
@@ -424,13 +511,26 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
     _send('note_group', {'dragged_id': draggedId, 'target_id': targetId});
   }
 
+  void _createActionItem(String content) {
+    final author = context.read<AuthProvider>().user?.username ?? '';
+    _send('action_item_create', {'content': content, 'author': author});
+  }
+
+  void _updateActionItem(String id, String content) {
+    _send('action_item_update', {'id': id, 'content': content});
+  }
+
+  void _deleteActionItem(String id) {
+    _send('action_item_delete', {'id': id});
+  }
+
   int _myVotesUsed() {
-    final userId = context.read<AuthProvider>().user?.id ?? '';
+    final userId = _myUserId;
     return _votes.values.fold(0, (sum, m) => sum + (m[userId] ?? 0));
   }
 
   void _setVote(String noteId, int count) {
-    final userId = context.read<AuthProvider>().user?.id ?? '';
+    final userId = _myUserId;
     setState(() => _votes.putIfAbsent(noteId, () => {})[userId] = count);
     _send('vote', {'note_id': noteId, 'count': count});
   }
@@ -576,13 +676,16 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
 
   Future<void> _showAddNoteDialog() async {
     final contentCtrl = TextEditingController();
-    String selectedColor = _noteColors.first;
+    String selectedColor = _lastNoteColor;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: Text(_brainstorm?.isCardSort ?? false ? 'New Card' : 'New Sticky Note'),
+          title: Text(
+              (_brainstorm?.isCardSort ?? false) || (_brainstorm?.isRetro ?? false)
+                  ? 'New Card'
+                  : 'New Sticky Note'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -651,12 +754,75 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
       final center = _worldCenter;
       final posX = center.dx + (_rng.nextDouble() - 0.5) * 200;
       final posY = center.dy + (_rng.nextDouble() - 0.5) * 200;
+      setState(() => _lastNoteColor = selectedColor);
+      _saveLastColor(selectedColor);
       _send('note_create', {
         'content': contentCtrl.text.trim(),
         'color': selectedColor,
         'pos_x': posX,
         'pos_y': posY,
       });
+    }
+  }
+
+  // Column x-bands and vertical stacking for the starfish/start-stop-continue
+  // retro board, so cards land at a real pos_x/pos_y and the Group slide
+  // (which renders notes by absolute position) doesn't stack them all at
+  // the same point.
+  static const _columnBandWidth = 260.0;
+  static const _columnNoteHeight = 110.0;
+
+  double _columnPosX(int columnIndex) => columnIndex * _columnBandWidth;
+
+  double _columnPosY(String column) {
+    final countInColumn = _notes.where((n) => n.column == column).length;
+    return countInColumn * _columnNoteHeight;
+  }
+
+  void _createNoteInColumn(String column, int columnIndex, String content) {
+    _send('note_create', {
+      'content': content,
+      'color': _noteColors.first,
+      'pos_x': _columnPosX(columnIndex),
+      'pos_y': _columnPosY(column),
+      'column': column,
+    });
+  }
+
+  void _moveNoteToColumnEnd(String id, String column, int columnIndex) {
+    _moveNoteToColumn(id, column, _columnPosX(columnIndex), _columnPosY(column));
+  }
+
+  Future<void> _showAddActionItemDialog() async {
+    final contentCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New Action Item'),
+        content: TextField(
+          controller: contentCtrl,
+          decoration: const InputDecoration(labelText: 'What needs to happen?'),
+          maxLines: 4,
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (contentCtrl.text.trim().isNotEmpty) {
+                Navigator.pop(ctx, true);
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted && contentCtrl.text.trim().isNotEmpty) {
+      _createActionItem(contentCtrl.text.trim());
     }
   }
 
@@ -736,16 +902,29 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
       );
     }
 
+    if (_brainstorm == null) {
+      // Not loaded yet — for guests this spans the "enter your name" dialog,
+      // so don't fall through to the default slide (problem statement),
+      // which would flash behind the dialog with the wrong content.
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final isRetro = _brainstorm?.isRetro ?? false;
+    final retroStyle = _brainstorm?.retroStyle ?? '';
     final isProblemMode = _slide == 0;
     final isGroupingMode = _slide == 2;
     final enableProblem = _brainstorm?.enableProblem ?? true;
     final enableVote = _brainstorm?.enableVote ?? false;
     final enablePrioritise = _brainstorm?.enablePrioritise ?? false;
     final isVotingMode = _slide == 3 && enableVote;
-    final isCostValueMode = _slide == 4 && enablePrioritise;
+    final isActionItemsMode = _slide == 4 && isRetro;
+    final isCostValueMode = _slide == 4 && !isRetro && enablePrioritise;
+    final isRetroBoardMode = _slide == 1 && isRetro;
     final isPresenter = _isPresenter;
     final canAssign = _canAssignPresenter;
-    final currentUserId = context.read<AuthProvider>().user?.id ?? '';
+    final currentUserId = _myUserId;
     final presenterLabel = _brainstorm?.presenterUsername
         ?? _brainstorm?.creatorUsername
         ?? '';
@@ -755,7 +934,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
       1,
       2,
       if (enableVote) 3,
-      if (enablePrioritise) 4,
+      if (isRetro || enablePrioritise) 4,
     ];
 
     return Scaffold(
@@ -821,14 +1000,23 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           ),
         ],
       ),
-      floatingActionButton: _slide != 1 || _showInterstitial
+      floatingActionButton: _showInterstitial
           ? null
-          : FloatingActionButton.extended(
-              onPressed: _showAddNoteDialog,
-              icon: const Icon(Icons.add),
-              label: Text(
-                  _brainstorm?.isCardSort ?? false ? 'Add Card' : 'Add Note'),
-            ),
+          : isActionItemsMode
+              ? FloatingActionButton.extended(
+                  onPressed: _showAddActionItemDialog,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Action Item'),
+                )
+              : _slide == 1 && (!isRetro || retroStyle == 'mad_glad')
+                  ? FloatingActionButton.extended(
+                      onPressed: _showAddNoteDialog,
+                      icon: const Icon(Icons.add),
+                      label: Text(_brainstorm?.isCardSort ?? false
+                          ? 'Add Card'
+                          : 'Add Note'),
+                    )
+                  : null,
       body: Column(
         children: [
           _SlideTabBar(
@@ -836,7 +1024,12 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
             enabled: isPresenter,
             enabledSlides: enabledSlides,
             onSlideChanged: _changeSlide,
-            isCardSort: _brainstorm?.isCardSort ?? false,
+            labels: isRetro
+                ? _retroSlideLabels(retroStyle)
+                : (_brainstorm?.isCardSort ?? false)
+                    ? _cardSortSlideLabels
+                    : _slideLabels,
+            icons: isRetro ? _retroSlideIconsBase : _slideIcons,
           ),
           Expanded(
             child: Stack(
@@ -855,13 +1048,19 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                             );
                           },
                         )
+                      : isActionItemsMode
+                      ? _ActionItemsList(
+                          items: _actionItems,
+                          onCreate: _createActionItem,
+                          onUpdate: _updateActionItem,
+                          onDelete: _deleteActionItem,
+                        )
                       : isCostValueMode
                       ? _CostValueMatrix(
                           notes: _notes,
                           positions: _matrixPositions,
                           lockedBy: _matrixLockedBy,
-                          currentUserId:
-                              context.read<AuthProvider>().user?.id ?? '',
+                          currentUserId: currentUserId,
                           onPositionChanged: _onMatrixPositionChanged,
                           onDragStart: _onMatrixDragStart,
                           onDragEnd: _onMatrixDragEnd,
@@ -876,14 +1075,12 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                                   child: _VoteCanvas(
                                     notes: _notes,
                                     votes: _votes,
-                                    currentUserId:
-                                        context.read<AuthProvider>().user?.id ?? '',
+                                    currentUserId: currentUserId,
                                     starsLeft: 4 - _myVotesUsed(),
                                     offset: _offset,
                                     scale: _scale,
                                     onVoteDelta: (noteId, delta) {
-                                      final userId =
-                                          context.read<AuthProvider>().user?.id ?? '';
+                                      final userId = currentUserId;
                                       final current =
                                           _votes[noteId]?[userId] ?? 0;
                                       final next = (current + delta).clamp(0, 4);
@@ -893,6 +1090,15 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                                   ),
                                 ),
                               ),
+                            )
+                          : isRetroBoardMode && retroStyle != 'mad_glad'
+                          ? _RetroColumnBoard(
+                              retroStyle: retroStyle,
+                              notes: _notes,
+                              currentUserId: currentUserId,
+                              onCreateCard: _createNoteInColumn,
+                              onMoveCard: _moveNoteToColumnEnd,
+                              onUpdateCard: _updateNote,
                             )
                           : ClipRect(
                               child: Listener(
@@ -922,6 +1128,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                                     isPresenter: isPresenter,
                                     isOwner: canAssign,
                                     isCardSort: _brainstorm?.isCardSort ?? false,
+                                    madGladMode: isRetroBoardMode && retroStyle == 'mad_glad',
+                                    blurOthersUnlessOwner: isRetroBoardMode && retroStyle == 'mad_glad',
                                   ),
                                 ),
                               ),
@@ -931,6 +1139,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                   _SlideInterstitial(
                     slide: _slide,
                     isCardSort: _brainstorm?.isCardSort ?? false,
+                    isRetro: isRetro,
+                    retroStyle: retroStyle,
                     customDescription: _brainstorm?.interstitialForSlide(_slide),
                     onDismiss: () {
                       setState(() => _dismissedInterstitials.add(_slide));
@@ -1021,23 +1231,83 @@ const _cardSortInterstitials = [
   ),
 ];
 
+String _retroStyleLabel(String retroStyle) => switch (retroStyle) {
+      'starfish' => 'Starfish',
+      'start_stop_continue' => 'Start-Stop-Continue',
+      'mad_glad' => 'Mad & Glad',
+      _ => 'Retro',
+    };
+
+List<({IconData icon, String title, String description, String action})>
+    _retroInterstitials(String retroStyle) => [
+          (
+            icon: Icons.lightbulb_outline,
+            title: 'Problem Statement',
+            description: '',
+            action: 'Got it',
+          ),
+          (
+            icon: Icons.history_outlined,
+            title: _retroStyleLabel(retroStyle),
+            description: switch (retroStyle) {
+              'starfish' =>
+                'Add cards to each column: More of, Less of, Start doing, Stop doing, and Continue.',
+              'start_stop_continue' =>
+                'Add cards to each column: Start, Stop, and Continue.',
+              'mad_glad' =>
+                'Add cards anywhere on the board, then drag them left or right to show how mad or glad they make you feel.',
+              _ => 'Add as many cards as you like.',
+            },
+            action: 'Start adding cards',
+          ),
+          (
+            icon: Icons.hub_outlined,
+            title: 'Group',
+            description:
+                'Drag similar cards onto each other to cluster them into themes. Look for patterns across the cards.',
+            action: 'Start grouping',
+          ),
+          (
+            icon: Icons.how_to_vote_outlined,
+            title: 'Vote',
+            description:
+                'You have 4 stars to distribute. Place them on the cards you think matter most.',
+            action: 'Start voting',
+          ),
+          (
+            icon: Icons.checklist_outlined,
+            title: 'Action Items',
+            description:
+                'Add concrete action items the team will follow up on.',
+            action: 'Start adding action items',
+          ),
+        ];
+
 class _SlideInterstitial extends StatelessWidget {
   final int slide;
   final VoidCallback onDismiss;
   final String? customDescription;
   final bool isCardSort;
+  final bool isRetro;
+  final String retroStyle;
 
   const _SlideInterstitial({
     required this.slide,
     required this.onDismiss,
     this.customDescription,
     this.isCardSort = false,
+    this.isRetro = false,
+    this.retroStyle = '',
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final list = isCardSort ? _cardSortInterstitials : _interstitials;
+    final list = isRetro
+        ? _retroInterstitials(retroStyle)
+        : isCardSort
+            ? _cardSortInterstitials
+            : _interstitials;
     final info = list[slide.clamp(0, list.length - 1)];
     final description = customDescription ?? info.description;
 
@@ -1115,20 +1385,26 @@ class _SlideInterstitial extends StatelessWidget {
 const _slideLabels = ['Problem', 'Brainstorm', 'Group', 'Vote', 'Prioritise'];
 const _cardSortSlideLabels = ['Problem', 'Add Cards', 'Group', 'Vote', 'Prioritise'];
 const _slideIcons = [Icons.lightbulb_outline, Icons.sticky_note_2_outlined, Icons.hub_outlined, Icons.how_to_vote_outlined, Icons.grid_view_outlined];
+const _retroSlideIconsBase = [Icons.lightbulb_outline, Icons.history_outlined, Icons.hub_outlined, Icons.how_to_vote_outlined, Icons.checklist_outlined];
+
+List<String> _retroSlideLabels(String retroStyle) =>
+    ['Problem', _retroStyleLabel(retroStyle), 'Group', 'Vote', 'Action Items'];
 
 class _SlideTabBar extends StatelessWidget {
   final int currentSlide;
   final bool enabled;
   final List<int> enabledSlides;
   final void Function(int) onSlideChanged;
-  final bool isCardSort;
+  final List<String> labels;
+  final List<IconData> icons;
 
   const _SlideTabBar({
     required this.currentSlide,
     required this.enabled,
     required this.enabledSlides,
     required this.onSlideChanged,
-    this.isCardSort = false,
+    this.labels = _slideLabels,
+    this.icons = _slideIcons,
   });
 
   @override
@@ -1163,8 +1439,8 @@ class _SlideTabBar extends StatelessWidget {
             final (pos, i) = entry;
             return [
               _SlideTab(
-                label: (isCardSort ? _cardSortSlideLabels : _slideLabels)[i],
-                icon: _slideIcons[i],
+                label: labels[i],
+                icon: icons[i],
                 selected: currentSlide == i,
                 showLabel: showLabels,
                 onTap: enabled ? () => onSlideChanged(i) : null,
@@ -1307,6 +1583,8 @@ class _InfiniteCanvas extends StatelessWidget {
   final bool isPresenter;
   final bool isOwner;
   final bool isCardSort;
+  final bool madGladMode;
+  final bool blurOthersUnlessOwner;
 
   const _InfiniteCanvas({
     required this.notes,
@@ -1328,6 +1606,8 @@ class _InfiniteCanvas extends StatelessWidget {
     required this.isPresenter,
     required this.isOwner,
     this.isCardSort = false,
+    this.madGladMode = false,
+    this.blurOthersUnlessOwner = false,
   });
 
   @override
@@ -1349,6 +1629,12 @@ class _InfiniteCanvas extends StatelessWidget {
                 ),
               ),
             ),
+            if (madGladMode)
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _MadGladBackgroundPainter(size: size),
+                ),
+              ),
             if (isGroupingMode)
               Positioned.fill(
                 child: CustomPaint(
@@ -1365,24 +1651,28 @@ class _InfiniteCanvas extends StatelessWidget {
                         size: 72, color: cs.onSurfaceVariant),
                     const SizedBox(height: 16),
                     Text(
-                        isGroupingMode
-                            ? (isCardSort
-                                ? 'No cards to group yet'
-                                : 'No notes to group yet')
-                            : (isCardSort
-                                ? 'Start adding cards!'
-                                : 'Start brainstorming!'),
+                        madGladMode
+                            ? 'Start adding cards!'
+                            : isGroupingMode
+                                ? (isCardSort
+                                    ? 'No cards to group yet'
+                                    : 'No notes to group yet')
+                                : (isCardSort
+                                    ? 'Start adding cards!'
+                                    : 'Start brainstorming!'),
                         style: TextStyle(
                             fontSize: 20, color: cs.onSurfaceVariant)),
                     const SizedBox(height: 8),
                     Text(
-                        isGroupingMode
-                            ? (isCardSort
-                                ? 'Switch to Add Cards to add cards first'
-                                : 'Switch to Brainstorm to add notes first')
-                            : (isCardSort
-                                ? 'Tap + Add Card to place your first card'
-                                : 'Tap + Add Note to place your first idea'),
+                        madGladMode
+                            ? 'Tap + Add Card, then drag it left or right'
+                            : isGroupingMode
+                                ? (isCardSort
+                                    ? 'Switch to Add Cards to add cards first'
+                                    : 'Switch to Brainstorm to add notes first')
+                                : (isCardSort
+                                    ? 'Tap + Add Card to place your first card'
+                                    : 'Tap + Add Note to place your first idea'),
                         style: TextStyle(color: cs.onSurfaceVariant)),
                   ],
                 ),
@@ -1447,6 +1737,7 @@ class _InfiniteCanvas extends StatelessWidget {
                 onDragStart: onNoteDragStart,
                 onDragEnd: onNoteDragEnd,
                 canDelete: isPresenter || isOwner || note.createdBy == currentUserId,
+                blurred: blurOthersUnlessOwner && note.createdBy != currentUserId,
               );
             }),
           ],
@@ -1575,6 +1866,51 @@ class _GroupBackgroundPainter extends CustomPainter {
       old.notes != notes || old.offset != offset || old.scale != scale;
 }
 
+// ─── Mad/Glad spectrum background ─────────────────────────────────────────────
+
+class _MadGladBackgroundPainter extends CustomPainter {
+  final Size size;
+
+  const _MadGladBackgroundPainter({required this.size});
+
+  @override
+  void paint(Canvas canvas, Size canvasSize) {
+    final rect = Offset.zero & canvasSize;
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          colors: [
+            const Color(0xFFEF9A9A).withValues(alpha: 0.35),
+            const Color(0xFFA5D6A7).withValues(alpha: 0.35),
+          ],
+        ).createShader(rect),
+    );
+
+    for (final (text, alignLeft) in [('MAD', true), ('GLAD', false)]) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 2,
+            color: Colors.black.withValues(alpha: 0.28),
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final dx = alignLeft
+          ? 24.0
+          : canvasSize.width - painter.width - 24.0;
+      painter.paint(canvas, Offset(dx, 20));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_MadGladBackgroundPainter old) => old.size != size;
+}
+
 // ─── Draggable sticky note ────────────────────────────────────────────────────
 
 const double _noteWidth = 164;
@@ -1592,6 +1928,13 @@ Color _hexColor(String hex) {
   final h = hex.replaceFirst('#', '');
   return Color(int.parse('FF$h', radix: 16));
 }
+
+Widget _maybeBlur(bool blurred, Widget child) => blurred
+    ? ImageFiltered(
+        imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+        child: child,
+      )
+    : child;
 
 class _PositionedNote extends StatefulWidget {
   final StickyNote note;
@@ -1612,6 +1955,7 @@ class _PositionedNote extends StatefulWidget {
   final VoidCallback onDragStart;
   final VoidCallback onDragEnd;
   final bool canDelete;
+  final bool blurred;
 
   const _PositionedNote({
     super.key,
@@ -1632,6 +1976,7 @@ class _PositionedNote extends StatefulWidget {
     required this.onDragStart,
     required this.onDragEnd,
     required this.canDelete,
+    this.blurred = false,
   });
 
   @override
@@ -1744,12 +2089,14 @@ class _PositionedNoteState extends State<_PositionedNote> {
             setState(() => _isDragging = false);
             widget.onDragEnd();
           },
-          onDoubleTap: () {
-            setState(() => _isEditing = true);
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _editFocusNode.requestFocus();
-            });
-          },
+          onDoubleTap: widget.blurred
+              ? null
+              : () {
+                  setState(() => _isEditing = true);
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _editFocusNode.requestFocus();
+                  });
+                },
           child: _NoteCard(
             note: widget.note,
             isGroupingMode: widget.isGroupingMode,
@@ -1759,6 +2106,7 @@ class _PositionedNoteState extends State<_PositionedNote> {
             editController: _editCtrl,
             editFocusNode: _editFocusNode,
             onEditDone: _commitEdit,
+            blurred: widget.blurred,
           ),
         ),
       ),
@@ -1775,6 +2123,7 @@ class _NoteCard extends StatelessWidget {
   final TextEditingController? editController;
   final FocusNode? editFocusNode;
   final VoidCallback? onEditDone;
+  final bool blurred;
 
   const _NoteCard({
     required this.note,
@@ -1785,6 +2134,7 @@ class _NoteCard extends StatelessWidget {
     this.editController,
     this.editFocusNode,
     this.onEditDone,
+    this.blurred = false,
   });
 
   @override
@@ -1834,33 +2184,36 @@ class _NoteCard extends StatelessWidget {
                           ),
                           onSubmitted: (_) => onEditDone?.call(),
                         )
-                      : MarkdownBody(
-                          data: note.content,
-                          styleSheet: MarkdownStyleSheet(
-                            p: TextStyle(
-                              fontSize: 13,
-                              color: textColor,
-                              height: 1.45,
-                            ),
-                            strong: TextStyle(
-                              fontSize: 13,
-                              color: textColor,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            em: TextStyle(
-                              fontSize: 13,
-                              color: textColor,
-                              fontStyle: FontStyle.italic,
-                            ),
-                            code: TextStyle(
-                              fontSize: 12,
-                              color: textColor,
-                              fontFamily: 'monospace',
-                              backgroundColor: Colors.black12,
-                            ),
-                            listBullet: TextStyle(
-                              fontSize: 13,
-                              color: textColor,
+                      : _maybeBlur(
+                          blurred,
+                          MarkdownBody(
+                            data: note.content,
+                            styleSheet: MarkdownStyleSheet(
+                              p: TextStyle(
+                                fontSize: 13,
+                                color: textColor,
+                                height: 1.45,
+                              ),
+                              strong: TextStyle(
+                                fontSize: 13,
+                                color: textColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              em: TextStyle(
+                                fontSize: 13,
+                                color: textColor,
+                                fontStyle: FontStyle.italic,
+                              ),
+                              code: TextStyle(
+                                fontSize: 12,
+                                color: textColor,
+                                fontFamily: 'monospace',
+                                backgroundColor: Colors.black12,
+                              ),
+                              listBullet: TextStyle(
+                                fontSize: 13,
+                                color: textColor,
+                              ),
                             ),
                           ),
                         ),
@@ -3197,6 +3550,361 @@ class _StarTray extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ─── Retro column board (starfish / start-stop-continue) ──────────────────────
+
+List<(String, String)> _retroColumnsFor(String retroStyle) =>
+    switch (retroStyle) {
+      'starfish' => const [
+          ('more_of', 'More of'),
+          ('less_of', 'Less of'),
+          ('start', 'Start doing'),
+          ('stop', 'Stop doing'),
+          ('continue', 'Continue'),
+        ],
+      'start_stop_continue' => const [
+          ('start', 'Start'),
+          ('stop', 'Stop'),
+          ('continue', 'Continue'),
+        ],
+      _ => const [],
+    };
+
+class _RetroColumnBoard extends StatelessWidget {
+  final String retroStyle;
+  final List<StickyNote> notes;
+  final String currentUserId;
+  final void Function(String column, int columnIndex, String content)
+      onCreateCard;
+  final void Function(String noteId, String column, int columnIndex)
+      onMoveCard;
+  final void Function(String id, String content) onUpdateCard;
+
+  const _RetroColumnBoard({
+    required this.retroStyle,
+    required this.notes,
+    required this.currentUserId,
+    required this.onCreateCard,
+    required this.onMoveCard,
+    required this.onUpdateCard,
+  });
+
+  Future<void> _promptAddCard(
+      BuildContext context, String column, int columnIndex) async {
+    final ctrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New Card'),
+        content: TextField(
+          controller: ctrl,
+          decoration:
+              const InputDecoration(labelText: 'What\'s on your mind?'),
+          maxLines: 4,
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (ctrl.text.trim().isNotEmpty) Navigator.pop(ctx, true);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && ctrl.text.trim().isNotEmpty) {
+      onCreateCard(column, columnIndex, ctrl.text.trim());
+    }
+  }
+
+  Future<void> _promptEditCard(BuildContext context, StickyNote note) async {
+    final ctrl = TextEditingController(text: note.content);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Card'),
+        content: TextField(
+          controller: ctrl,
+          maxLines: 4,
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (ctrl.text.trim().isNotEmpty) Navigator.pop(ctx, true);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && ctrl.text.trim().isNotEmpty) {
+      onUpdateCard(note.id, ctrl.text.trim());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final columns = _retroColumnsFor(retroStyle);
+    return Container(
+      color: cs.surfaceContainerHighest,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: columns.indexed.map((entry) {
+            final (index, column) = entry;
+            final key = column.$1;
+            final label = column.$2;
+            final cards = notes.where((n) => n.column == key).toList()
+              ..sort((a, b) => a.posY.compareTo(b.posY));
+            return Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: _RetroColumn(
+                label: label,
+                cards: cards,
+                currentUserId: currentUserId,
+                onAdd: () => _promptAddCard(context, key, index),
+                onDropNote: (noteId) => onMoveCard(noteId, key, index),
+                onEditCard: (note) => _promptEditCard(context, note),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+}
+
+class _RetroColumn extends StatelessWidget {
+  final String label;
+  final List<StickyNote> cards;
+  final String currentUserId;
+  final VoidCallback onAdd;
+  final void Function(String noteId) onDropNote;
+  final void Function(StickyNote note) onEditCard;
+
+  const _RetroColumn({
+    required this.label,
+    required this.cards,
+    required this.currentUserId,
+    required this.onAdd,
+    required this.onDropNote,
+    required this.onEditCard,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 240,
+      height: double.infinity,
+      child: DragTarget<String>(
+        onAcceptWithDetails: (details) => onDropNote(details.data),
+        builder: (context, candidateData, rejectedData) {
+          final highlighted = candidateData.isNotEmpty;
+          return Container(
+            decoration: BoxDecoration(
+              color: highlighted
+                  ? cs.primaryContainer.withValues(alpha: 0.3)
+                  : cs.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: cs.outlineVariant),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(label,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.add, size: 18),
+                        onPressed: onAdd,
+                        tooltip: 'Add card',
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(8),
+                    children: cards.map((note) {
+                      final isOwn = note.createdBy == currentUserId;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Draggable<String>(
+                          data: note.id,
+                          feedback: Material(
+                            color: Colors.transparent,
+                            child: SizedBox(
+                                width: 212,
+                                child: _RetroCard(note: note, isOwn: isOwn)),
+                          ),
+                          childWhenDragging: Opacity(
+                              opacity: 0.3,
+                              child: _RetroCard(note: note, isOwn: isOwn)),
+                          child: _RetroCard(
+                            note: note,
+                            isOwn: isOwn,
+                            onTap: isOwn ? () => onEditCard(note) : null,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _RetroCard extends StatelessWidget {
+  final StickyNote note;
+  final bool isOwn;
+  final VoidCallback? onTap;
+
+  const _RetroCard({required this.note, required this.isOwn, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = _hexColor(note.color);
+    final isDark = ThemeData.estimateBrightnessForColor(bg) == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final text = Text(
+      note.content,
+      style: TextStyle(
+        fontSize: 13,
+        color: textColor,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: const [BoxShadow(blurRadius: 3, color: Colors.black26)],
+        ),
+        child: isOwn
+            ? text
+            : ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                child: text,
+              ),
+      ),
+    );
+  }
+}
+
+// ─── Action items list ─────────────────────────────────────────────────────────
+
+class _ActionItemsList extends StatelessWidget {
+  final List<ActionItem> items;
+  final void Function(String content) onCreate;
+  final void Function(String id, String content) onUpdate;
+  final void Function(String id) onDelete;
+
+  const _ActionItemsList({
+    required this.items,
+    required this.onCreate,
+    required this.onUpdate,
+    required this.onDelete,
+  });
+
+  Future<void> _edit(BuildContext context, ActionItem item) async {
+    final ctrl = TextEditingController(text: item.content);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Action Item'),
+        content: TextField(
+          controller: ctrl,
+          maxLines: 4,
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && ctrl.text.trim().isNotEmpty) {
+      onUpdate(item.id, ctrl.text.trim());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    if (items.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.checklist_outlined, size: 72, color: cs.onSurfaceVariant),
+            const SizedBox(height: 16),
+            Text('No action items yet',
+                style: TextStyle(fontSize: 20, color: cs.onSurfaceVariant)),
+            const SizedBox(height: 8),
+            Text('Tap + Add Action Item to add the first one',
+                style: TextStyle(color: cs.onSurfaceVariant)),
+          ],
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+      itemCount: items.length,
+      itemBuilder: (context, i) {
+        final item = items[i];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          child: ListTile(
+            leading: const Icon(Icons.task_alt_outlined),
+            title: Text(item.content),
+            subtitle: item.author.isNotEmpty ? Text(item.author) : null,
+            onTap: () => _edit(context, item),
+            trailing: IconButton(
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => onDelete(item.id),
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -34,4 +34,5 @@ flutter:
   assets:
     - .env
     - .env.prod
+    - .env.android
     - assets/logo.svg

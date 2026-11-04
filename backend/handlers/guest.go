@@ -21,6 +21,26 @@ func NewGuestHandler(db *gorm.DB) *GuestHandler {
 	return &GuestHandler{db: db}
 }
 
+// guestAccessAllowed re-checks the brainstorm's group's *current* plan, not
+// just the brainstorm's stored GuestsEnabled flag. A team can downgrade to
+// free after a brainstorm was created with guests enabled on a paid plan —
+// the flag is left stale in the DB, so without this re-check, guest access
+// would keep working on a group that no longer allows it.
+func guestAccessAllowed(db *gorm.DB, brainstorm *models.Brainstorm) bool {
+	if !brainstorm.GuestsEnabled {
+		return false
+	}
+	var group models.Group
+	if err := db.Preload("Team").First(&group, "id = ?", brainstorm.GroupID).Error; err != nil {
+		return false
+	}
+	plan := "free"
+	if group.Team != nil && group.Team.Plan != "" {
+		plan = group.Team.Plan
+	}
+	return plan != "free"
+}
+
 // GetGuestBrainstorm returns basic project info for unauthenticated users.
 // Used by the frontend to decide whether to show the guest join prompt.
 func (h *GuestHandler) GetGuestBrainstorm(c *gin.Context) {
@@ -40,10 +60,20 @@ func (h *GuestHandler) GetGuestBrainstorm(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":             brainstorm.ID,
-		"name":           brainstorm.Name,
-		"guests_enabled": brainstorm.GuestsEnabled,
-		"enable_problem": brainstorm.EnableProblem,
+		"id":                        brainstorm.ID,
+		"name":                      brainstorm.Name,
+		"guests_enabled":            guestAccessAllowed(h.db, &brainstorm),
+		"type":                      brainstorm.Type,
+		"retro_style":               brainstorm.RetroStyle,
+		"enable_problem":            brainstorm.EnableProblem,
+		"enable_vote":               brainstorm.EnableVote,
+		"enable_prioritise":         brainstorm.EnablePrioritise,
+		"interstitial_problem":      brainstorm.InterstitialProblem,
+		"interstitial_brainstorm":   brainstorm.InterstitialBrainstorm,
+		"interstitial_group":        brainstorm.InterstitialGroup,
+		"interstitial_vote":         brainstorm.InterstitialVote,
+		"interstitial_prioritise":   brainstorm.InterstitialPrioritise,
+		"interstitial_action_items": brainstorm.InterstitialActionItems,
 	})
 }
 
@@ -57,7 +87,7 @@ func (h *GuestHandler) GuestJoin(c *gin.Context) {
 		return
 	}
 
-	if !brainstorm.GuestsEnabled {
+	if !guestAccessAllowed(h.db, &brainstorm) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "guest access is not enabled for this brainstorm"})
 		return
 	}
@@ -86,5 +116,5 @@ func (h *GuestHandler) GuestJoin(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"token": signed})
+	c.JSON(http.StatusOK, gin.H{"token": signed, "user_id": claims.UserID})
 }

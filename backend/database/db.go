@@ -42,7 +42,7 @@ func InitDB() *gorm.DB {
 		}
 	}
 
-	if err := db.AutoMigrate(&models.User{}, &models.Team{}, &models.Group{}, &models.Brainstorm{}, &models.StickyNote{}, &models.NoteVote{}, &models.OAuthIdentity{}, &models.TeamSSOConfig{}, &models.Goal{}, &models.KeyResult{}, &models.TeamIntegration{}, &models.ExportRun{}, &models.ExportedItem{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.Team{}, &models.Group{}, &models.Brainstorm{}, &models.StickyNote{}, &models.NoteVote{}, &models.OAuthIdentity{}, &models.TeamSSOConfig{}, &models.Goal{}, &models.KeyResult{}, &models.TeamIntegration{}, &models.ExportRun{}, &models.ExportedItem{}, &models.ActionItem{}); err != nil {
 		log.Fatal("failed to migrate database:", err)
 	}
 

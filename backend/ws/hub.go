@@ -121,6 +121,12 @@ func (h *Hub) sendInit(client *Client) {
 		votes = []models.NoteVote{}
 	}
 
+	var actionItems []models.ActionItem
+	h.db.Where("brainstorm_id = ?", h.brainstormID).Find(&actionItems)
+	if actionItems == nil {
+		actionItems = []models.ActionItem{}
+	}
+
 	var brainstorm models.Brainstorm
 	h.db.Where("id = ?", h.brainstormID).First(&brainstorm)
 
@@ -132,6 +138,7 @@ func (h *Hub) sendInit(client *Client) {
 		"notes":              notes,
 		"slide":              slide,
 		"votes":              votes,
+		"action_items":       actionItems,
 		"problem_statement":  brainstorm.ProblemStatement,
 	})
 	if err != nil {
@@ -187,6 +194,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			PosX    float64 `json:"pos_x"`
 			PosY    float64 `json:"pos_y"`
 			Color   string  `json:"color"`
+			Column  *string `json:"column,omitempty"`
 		}
 		if json.Unmarshal(msg.Payload, &p) != nil {
 			return
@@ -199,6 +207,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			Color:     p.Color,
 			CreatedBy: client.userID,
 			Author:    client.username,
+			Column:    p.Column,
 		}
 		h.db.Create(&note)
 		if data, err := buildMessage("note_create", note); err == nil {
@@ -207,16 +216,17 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 
 	case "note_move":
 		var p struct {
-			ID   string  `json:"id"`
-			PosX float64 `json:"pos_x"`
-			PosY float64 `json:"pos_y"`
+			ID     string  `json:"id"`
+			PosX   float64 `json:"pos_x"`
+			PosY   float64 `json:"pos_y"`
+			Column *string `json:"column,omitempty"`
 		}
 		if json.Unmarshal(msg.Payload, &p) != nil {
 			return
 		}
 		h.db.Model(&models.StickyNote{}).
 			Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).
-			Updates(map[string]any{"pos_x": p.PosX, "pos_y": p.PosY})
+			Updates(map[string]any{"pos_x": p.PosX, "pos_y": p.PosY, "column": p.Column})
 		if data, err := buildMessage("note_move", p); err == nil {
 			h.broadcast <- data
 		}
@@ -245,6 +255,51 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 		}
 		h.db.Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).Delete(&models.StickyNote{})
 		if data, err := buildMessage("note_delete", p); err == nil {
+			h.broadcast <- data
+		}
+
+	case "action_item_create":
+		var p struct {
+			Content string `json:"content"`
+		}
+		if json.Unmarshal(msg.Payload, &p) != nil {
+			return
+		}
+		item := models.ActionItem{
+			BrainstormID: h.brainstormID,
+			Content:      p.Content,
+			CreatedBy:    client.userID,
+			Author:       client.username,
+		}
+		h.db.Create(&item)
+		if data, err := buildMessage("action_item_create", item); err == nil {
+			h.broadcast <- data
+		}
+
+	case "action_item_update":
+		var p struct {
+			ID      string `json:"id"`
+			Content string `json:"content"`
+		}
+		if json.Unmarshal(msg.Payload, &p) != nil {
+			return
+		}
+		h.db.Model(&models.ActionItem{}).
+			Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).
+			Update("content", p.Content)
+		if data, err := buildMessage("action_item_update", p); err == nil {
+			h.broadcast <- data
+		}
+
+	case "action_item_delete":
+		var p struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(msg.Payload, &p) != nil {
+			return
+		}
+		h.db.Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).Delete(&models.ActionItem{})
+		if data, err := buildMessage("action_item_delete", p); err == nil {
 			h.broadcast <- data
 		}
 

@@ -10,6 +10,7 @@ class Brainstorm {
   final String? presenterId;
   final String? presenterUsername;
   final String type;
+  final String retroStyle;
   final bool enableProblem;
   final bool enableVote;
   final bool enablePrioritise;
@@ -21,6 +22,7 @@ class Brainstorm {
   final String interstitialGroup;
   final String interstitialVote;
   final String interstitialPrioritise;
+  final String interstitialActionItems;
 
   const Brainstorm({
     required this.id,
@@ -34,6 +36,7 @@ class Brainstorm {
     this.presenterId,
     this.presenterUsername,
     this.type = 'brainstorm',
+    this.retroStyle = '',
     this.enableProblem = true,
     this.enableVote = true,
     this.enablePrioritise = true,
@@ -45,6 +48,7 @@ class Brainstorm {
     this.interstitialGroup = '',
     this.interstitialVote = '',
     this.interstitialPrioritise = '',
+    this.interstitialActionItems = '',
   });
 
   /// Returns the custom interstitial description for [slide], or null to use
@@ -55,13 +59,14 @@ class Brainstorm {
       1 => interstitialBrainstorm,
       2 => interstitialGroup,
       3 => interstitialVote,
-      4 => interstitialPrioritise,
+      4 => isRetro ? interstitialActionItems : interstitialPrioritise,
       _ => '',
     };
     return value.isEmpty ? null : value;
   }
 
   bool get isCardSort => type == 'card_sort';
+  bool get isRetro => type == 'retro';
 
   factory Brainstorm.fromJson(Map<String, dynamic> json) => Brainstorm(
         id: json['id'] as String,
@@ -77,6 +82,7 @@ class Brainstorm {
         presenterUsername:
             (json['presenter'] as Map<String, dynamic>?)?['username'] as String?,
         type: json['type'] as String? ?? 'brainstorm',
+        retroStyle: json['retro_style'] as String? ?? '',
         enableProblem: json['enable_problem'] as bool? ?? true,
         enableVote: json['enable_vote'] as bool? ?? true,
         enablePrioritise: json['enable_prioritise'] as bool? ?? true,
@@ -88,6 +94,7 @@ class Brainstorm {
         interstitialGroup: json['interstitial_group'] as String? ?? '',
         interstitialVote: json['interstitial_vote'] as String? ?? '',
         interstitialPrioritise: json['interstitial_prioritise'] as String? ?? '',
+        interstitialActionItems: json['interstitial_action_items'] as String? ?? '',
       );
 
   Brainstorm copyWith({String? presenterId, String? presenterUsername, bool clearPresenter = false}) =>
@@ -103,6 +110,7 @@ class Brainstorm {
         presenterId: clearPresenter ? null : (presenterId ?? this.presenterId),
         presenterUsername: clearPresenter ? null : (presenterUsername ?? this.presenterUsername),
         type: type,
+        retroStyle: retroStyle,
         enableProblem: enableProblem,
         enableVote: enableVote,
         enablePrioritise: enablePrioritise,

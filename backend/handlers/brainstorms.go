@@ -23,11 +23,20 @@ func NewBrainstormHandler(db *gorm.DB) *BrainstormHandler {
 var brainstormTypes = map[string]bool{
 	"brainstorm": true,
 	"card_sort":  true,
+	"retro":      true,
+}
+
+// retroStyles are the valid values for Brainstorm.RetroStyle when Type == "retro".
+var retroStyles = map[string]bool{
+	"starfish":            true,
+	"start_stop_continue": true,
+	"mad_glad":            true,
 }
 
 type CreateBrainstormRequest struct {
 	Name             string `json:"name" binding:"required,min=2"`
 	Type             string `json:"type"`
+	RetroStyle       string `json:"retro_style"`
 	Description      string `json:"description"`
 	ProblemStatement string `json:"problem_statement"`
 	EnableProblem    bool   `json:"enable_problem"`
@@ -35,11 +44,12 @@ type CreateBrainstormRequest struct {
 	EnablePrioritise bool   `json:"enable_prioritise"`
 	GuestsEnabled    bool   `json:"guests_enabled"`
 
-	InterstitialProblem    string `json:"interstitial_problem"`
-	InterstitialBrainstorm string `json:"interstitial_brainstorm"`
-	InterstitialGroup      string `json:"interstitial_group"`
-	InterstitialVote       string `json:"interstitial_vote"`
-	InterstitialPrioritise string `json:"interstitial_prioritise"`
+	InterstitialProblem     string `json:"interstitial_problem"`
+	InterstitialBrainstorm  string `json:"interstitial_brainstorm"`
+	InterstitialGroup       string `json:"interstitial_group"`
+	InterstitialVote        string `json:"interstitial_vote"`
+	InterstitialPrioritise  string `json:"interstitial_prioritise"`
+	InterstitialActionItems string `json:"interstitial_action_items"`
 }
 
 // loadGroupAsMember fetches the group by slug with members preloaded and
@@ -141,6 +151,11 @@ func (h *BrainstormHandler) CreateBrainstorm(c *gin.Context) {
 		return
 	}
 	isCardSort := req.Type == "card_sort"
+	isRetro := req.Type == "retro"
+	if isRetro && !retroStyles[req.RetroStyle] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid retro style"})
+		return
+	}
 
 	groupPlan := "free"
 	if group.Team != nil && group.Team.Plan != "" {
@@ -164,6 +179,7 @@ func (h *BrainstormHandler) CreateBrainstorm(c *gin.Context) {
 		req.InterstitialGroup = ""
 		req.InterstitialVote = ""
 		req.InterstitialPrioritise = ""
+		req.InterstitialActionItems = ""
 	}
 
 	if isCardSort {
@@ -174,6 +190,13 @@ func (h *BrainstormHandler) CreateBrainstorm(c *gin.Context) {
 		req.EnablePrioritise = false
 	}
 
+	if isRetro {
+		// Retro is a fixed pipeline: [style board] -> group -> vote -> action items.
+		req.EnableProblem = false
+		req.EnableVote = true
+		req.EnablePrioritise = false
+	}
+
 	slug := utils.UniqueSlug(utils.Slugify(req.Name), func(s string) bool {
 		var count int64
 		h.db.Model(&models.Brainstorm{}).Where("group_id = ? AND slug = ?", group.ID, s).Count(&count)
@@ -181,22 +204,24 @@ func (h *BrainstormHandler) CreateBrainstorm(c *gin.Context) {
 	})
 
 	brainstorm := models.Brainstorm{
-		Name:                   req.Name,
-		Type:                   req.Type,
-		Slug:                   slug,
-		Description:            req.Description,
-		ProblemStatement:       req.ProblemStatement,
-		GroupID:                group.ID,
-		CreatedBy:              userID,
-		EnableProblem:          req.EnableProblem,
-		EnableVote:             req.EnableVote,
-		EnablePrioritise:       req.EnablePrioritise,
-		GuestsEnabled:          req.GuestsEnabled,
-		InterstitialProblem:    req.InterstitialProblem,
-		InterstitialBrainstorm: req.InterstitialBrainstorm,
-		InterstitialGroup:      req.InterstitialGroup,
-		InterstitialVote:       req.InterstitialVote,
-		InterstitialPrioritise: req.InterstitialPrioritise,
+		Name:                    req.Name,
+		Type:                    req.Type,
+		RetroStyle:              req.RetroStyle,
+		Slug:                    slug,
+		Description:             req.Description,
+		ProblemStatement:        req.ProblemStatement,
+		GroupID:                 group.ID,
+		CreatedBy:               userID,
+		EnableProblem:           req.EnableProblem,
+		EnableVote:              req.EnableVote,
+		EnablePrioritise:        req.EnablePrioritise,
+		GuestsEnabled:           req.GuestsEnabled,
+		InterstitialProblem:     req.InterstitialProblem,
+		InterstitialBrainstorm:  req.InterstitialBrainstorm,
+		InterstitialGroup:       req.InterstitialGroup,
+		InterstitialVote:        req.InterstitialVote,
+		InterstitialPrioritise:  req.InterstitialPrioritise,
+		InterstitialActionItems: req.InterstitialActionItems,
 	}
 
 	if err := h.db.Create(&brainstorm).Error; err != nil {
@@ -213,8 +238,9 @@ func (h *BrainstormHandler) CreateBrainstorm(c *gin.Context) {
 		"interstitial_problem":    req.InterstitialProblem,
 		"interstitial_brainstorm": req.InterstitialBrainstorm,
 		"interstitial_group":      req.InterstitialGroup,
-		"interstitial_vote":       req.InterstitialVote,
-		"interstitial_prioritise": req.InterstitialPrioritise,
+		"interstitial_vote":        req.InterstitialVote,
+		"interstitial_prioritise":  req.InterstitialPrioritise,
+		"interstitial_action_items": req.InterstitialActionItems,
 	})
 
 	h.db.Preload("Creator").Preload("Presenter").First(&brainstorm, "id = ?", brainstorm.ID)
@@ -303,11 +329,12 @@ func (h *BrainstormHandler) UpdateBrainstorm(c *gin.Context) {
 		EnablePrioritise bool   `json:"enable_prioritise"`
 		GuestsEnabled    bool   `json:"guests_enabled"`
 
-		InterstitialProblem    string `json:"interstitial_problem"`
-		InterstitialBrainstorm string `json:"interstitial_brainstorm"`
-		InterstitialGroup      string `json:"interstitial_group"`
-		InterstitialVote       string `json:"interstitial_vote"`
-		InterstitialPrioritise string `json:"interstitial_prioritise"`
+		InterstitialProblem     string `json:"interstitial_problem"`
+		InterstitialBrainstorm  string `json:"interstitial_brainstorm"`
+		InterstitialGroup       string `json:"interstitial_group"`
+		InterstitialVote        string `json:"interstitial_vote"`
+		InterstitialPrioritise  string `json:"interstitial_prioritise"`
+		InterstitialActionItems string `json:"interstitial_action_items"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -328,6 +355,7 @@ func (h *BrainstormHandler) UpdateBrainstorm(c *gin.Context) {
 		req.InterstitialGroup = ""
 		req.InterstitialVote = ""
 		req.InterstitialPrioritise = ""
+		req.InterstitialActionItems = ""
 	}
 
 	if brainstorm.Type == "card_sort" {
@@ -338,19 +366,28 @@ func (h *BrainstormHandler) UpdateBrainstorm(c *gin.Context) {
 		req.EnablePrioritise = false
 	}
 
+	if brainstorm.Type == "retro" {
+		// Type/style are immutable after creation; retro is always the
+		// same fixed pipeline regardless of plan.
+		req.EnableProblem = false
+		req.EnableVote = true
+		req.EnablePrioritise = false
+	}
+
 	h.db.Model(&brainstorm).UpdateColumns(map[string]any{
-		"name":                    req.Name,
-		"description":             req.Description,
-		"problem_statement":       req.ProblemStatement,
-		"enable_problem":          req.EnableProblem,
-		"enable_vote":             req.EnableVote,
-		"enable_prioritise":       req.EnablePrioritise,
-		"guests_enabled":          req.GuestsEnabled,
-		"interstitial_problem":    req.InterstitialProblem,
-		"interstitial_brainstorm": req.InterstitialBrainstorm,
-		"interstitial_group":      req.InterstitialGroup,
-		"interstitial_vote":       req.InterstitialVote,
-		"interstitial_prioritise": req.InterstitialPrioritise,
+		"name":                      req.Name,
+		"description":               req.Description,
+		"problem_statement":         req.ProblemStatement,
+		"enable_problem":            req.EnableProblem,
+		"enable_vote":               req.EnableVote,
+		"enable_prioritise":         req.EnablePrioritise,
+		"guests_enabled":            req.GuestsEnabled,
+		"interstitial_problem":      req.InterstitialProblem,
+		"interstitial_brainstorm":   req.InterstitialBrainstorm,
+		"interstitial_group":        req.InterstitialGroup,
+		"interstitial_vote":         req.InterstitialVote,
+		"interstitial_prioritise":   req.InterstitialPrioritise,
+		"interstitial_action_items": req.InterstitialActionItems,
 	})
 
 	h.db.Preload("Creator").Preload("Presenter").First(&brainstorm, "id = ?", brainstorm.ID)

@@ -59,8 +59,10 @@ func (h *SlideshowHandler) Connect(c *gin.Context) {
 	var username string
 
 	if claims.IsGuest {
-		// Guest tokens skip membership checks but require guests to be enabled.
-		if !brainstorm.GuestsEnabled {
+		// Guest tokens skip membership checks but require guests to be enabled
+		// — re-checked against the group's *current* plan, not just the
+		// brainstorm's stored flag (see guestAccessAllowed).
+		if !guestAccessAllowed(h.db, &brainstorm) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "guest access is not enabled for this brainstorm"})
 			return
 		}

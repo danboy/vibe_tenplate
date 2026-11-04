@@ -66,6 +66,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     final iCtrl = _InterstitialControllers();
     final formKey = GlobalKey<FormState>();
     var type = 'brainstorm';
+    var retroStyle = 'starfish';
     var enableProblem = true;
     var enableVote = true;
     var enablePrioritise = true;
@@ -76,7 +77,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('New Brainstorm'),
+          title: const Text('New Activity'),
           content: Form(
             key: formKey,
             child: SingleChildScrollView(
@@ -96,10 +97,37 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                         label: Text('Card sorting'),
                         icon: Icon(Icons.style_outlined),
                       ),
+                      ButtonSegment(
+                        value: 'retro',
+                        label: Text('Retro'),
+                        icon: Icon(Icons.history_outlined),
+                      ),
                     ],
                     selected: {type},
                     onSelectionChanged: (s) => setLocal(() => type = s.first),
                   ),
+                  if (type == 'retro') ...[
+                    const SizedBox(height: 12),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(
+                          value: 'starfish',
+                          label: Text('Starfish'),
+                        ),
+                        ButtonSegment(
+                          value: 'start_stop_continue',
+                          label: Text('Start-Stop-Continue'),
+                        ),
+                        ButtonSegment(
+                          value: 'mad_glad',
+                          label: Text('Mad & Glad'),
+                        ),
+                      ],
+                      selected: {retroStyle},
+                      onSelectionChanged: (s) =>
+                          setLocal(() => retroStyle = s.first),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: nameCtrl,
@@ -182,6 +210,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                       enableVote: type == 'brainstorm' && enableVote,
                       enablePrioritise: type == 'brainstorm' && enablePrioritise,
                       isCardSort: type == 'card_sort',
+                      isRetro: type == 'retro',
                     ),
                   ] else ...[
                     const SizedBox(height: 12),
@@ -236,6 +265,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
         groupSlug: widget.groupSlug,
         name: nameCtrl.text.trim(),
         type: type,
+        retroStyle: type == 'retro' ? retroStyle : '',
         description: descCtrl.text.trim(),
         problemStatement: type == 'brainstorm' ? problemCtrl.text.trim() : '',
         enableProblem: type == 'brainstorm' && enableProblem,
@@ -247,6 +277,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
         interstitialGroup: iCtrl.group.text.trim(),
         interstitialVote: iCtrl.vote.text.trim(),
         interstitialPrioritise: iCtrl.prioritise.text.trim(),
+        interstitialActionItems: iCtrl.actionItems.text.trim(),
       );
       _refresh();
     } catch (e) {
@@ -267,6 +298,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
       group: brainstorm.interstitialGroup,
       vote: brainstorm.interstitialVote,
       prioritise: brainstorm.interstitialPrioritise,
+      actionItems: brainstorm.interstitialActionItems,
     );
     final formKey = GlobalKey<FormState>();
     var enableProblem = brainstorm.enableProblem;
@@ -292,13 +324,31 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                 children: [
                   Chip(
                     avatar: Icon(
-                        brainstorm.isCardSort
-                            ? Icons.style_outlined
-                            : Icons.folder_outlined,
+                        brainstorm.isRetro
+                            ? Icons.history_outlined
+                            : brainstorm.isCardSort
+                                ? Icons.style_outlined
+                                : Icons.folder_outlined,
                         size: 18),
                     label: Text(
-                        brainstorm.isCardSort ? 'Card sorting' : 'Brainstorm'),
+                        brainstorm.isRetro
+                            ? 'Retro'
+                            : brainstorm.isCardSort
+                                ? 'Card sorting'
+                                : 'Brainstorm'),
                   ),
+                  if (brainstorm.isRetro) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      switch (brainstorm.retroStyle) {
+                        'starfish' => 'Starfish',
+                        'start_stop_continue' => 'Start-Stop-Continue',
+                        'mad_glad' => 'Mad & Glad',
+                        _ => brainstorm.retroStyle,
+                      },
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: nameCtrl,
@@ -319,7 +369,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                     ),
                     maxLines: 3,
                   ),
-                  if (!brainstorm.isCardSort) ...[
+                  if (!brainstorm.isCardSort && !brainstorm.isRetro) ...[
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: problemCtrl,
@@ -331,7 +381,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                     ),
                   ],
                   if (canCustomize) ...[
-                    if (!brainstorm.isCardSort) ...[
+                    if (!brainstorm.isCardSort && !brainstorm.isRetro) ...[
                       const SizedBox(height: 16),
                       Text('Optional slides',
                           style: TextStyle(
@@ -377,10 +427,11 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                     const SizedBox(height: 8),
                     _InterstitialSection(
                       controllers: iCtrl,
-                      enableProblem: !brainstorm.isCardSort && enableProblem,
+                      enableProblem: !brainstorm.isCardSort && !brainstorm.isRetro && enableProblem,
                       enableVote: !brainstorm.isCardSort && enableVote,
-                      enablePrioritise: !brainstorm.isCardSort && enablePrioritise,
+                      enablePrioritise: !brainstorm.isCardSort && !brainstorm.isRetro && enablePrioritise,
                       isCardSort: brainstorm.isCardSort,
+                      isRetro: brainstorm.isRetro,
                     ),
                   ] else ...[
                     const SizedBox(height: 12),
@@ -436,16 +487,17 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
         brainstormSlug: brainstorm.slug,
         name: nameCtrl.text.trim(),
         description: descCtrl.text.trim(),
-        problemStatement: brainstorm.isCardSort ? '' : problemCtrl.text.trim(),
-        enableProblem: !brainstorm.isCardSort && enableProblem,
+        problemStatement: brainstorm.isCardSort || brainstorm.isRetro ? '' : problemCtrl.text.trim(),
+        enableProblem: !brainstorm.isCardSort && !brainstorm.isRetro && enableProblem,
         enableVote: !brainstorm.isCardSort && enableVote,
-        enablePrioritise: !brainstorm.isCardSort && enablePrioritise,
+        enablePrioritise: !brainstorm.isCardSort && !brainstorm.isRetro && enablePrioritise,
         guestsEnabled: guestsEnabled,
         interstitialProblem: iCtrl.problem.text.trim(),
         interstitialBrainstorm: iCtrl.brainstorm.text.trim(),
         interstitialGroup: iCtrl.group.text.trim(),
         interstitialVote: iCtrl.vote.text.trim(),
         interstitialPrioritise: iCtrl.prioritise.text.trim(),
+        interstitialActionItems: iCtrl.actionItems.text.trim(),
       );
       _refresh();
     } catch (e) {
@@ -538,7 +590,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
               : FloatingActionButton.extended(
                   onPressed: () => _showCreateDialog(group),
                   icon: const Icon(Icons.add),
-                  label: const Text('New Brainstorm'),
+                  label: const Text('New Activity'),
                 ),
           body: _buildBody(snap, group, projects, me, theme),
         );
@@ -686,9 +738,11 @@ class _ProjectCard extends StatelessWidget {
               CircleAvatar(
                 backgroundColor: theme.colorScheme.secondaryContainer,
                 child: Icon(
-                    brainstorm.isCardSort
-                        ? Icons.style_outlined
-                        : Icons.folder,
+                    brainstorm.isRetro
+                        ? Icons.history_outlined
+                        : brainstorm.isCardSort
+                            ? Icons.style_outlined
+                            : Icons.folder,
                     color: theme.colorScheme.onSecondaryContainer),
               ),
               const SizedBox(width: 12),
@@ -808,6 +862,7 @@ class _InterstitialControllers {
   final TextEditingController group;
   final TextEditingController vote;
   final TextEditingController prioritise;
+  final TextEditingController actionItems;
 
   _InterstitialControllers({
     String problem = '',
@@ -815,11 +870,13 @@ class _InterstitialControllers {
     String group = '',
     String vote = '',
     String prioritise = '',
+    String actionItems = '',
   })  : problem = TextEditingController(text: problem),
         brainstorm = TextEditingController(text: brainstorm),
         group = TextEditingController(text: group),
         vote = TextEditingController(text: vote),
-        prioritise = TextEditingController(text: prioritise);
+        prioritise = TextEditingController(text: prioritise),
+        actionItems = TextEditingController(text: actionItems);
 }
 
 class _InterstitialSection extends StatelessWidget {
@@ -828,6 +885,7 @@ class _InterstitialSection extends StatelessWidget {
   final bool enableVote;
   final bool enablePrioritise;
   final bool isCardSort;
+  final bool isRetro;
 
   const _InterstitialSection({
     required this.controllers,
@@ -835,6 +893,7 @@ class _InterstitialSection extends StatelessWidget {
     required this.enableVote,
     required this.enablePrioritise,
     this.isCardSort = false,
+    this.isRetro = false,
   });
 
   @override
@@ -860,8 +919,8 @@ class _InterstitialSection extends StatelessWidget {
           _interstitialField(controllers.problem, 'Problem Statement'),
           const SizedBox(height: 12),
         ],
-        _interstitialField(
-            controllers.brainstorm, isCardSort ? 'Add cards' : 'Brainstorm'),
+        _interstitialField(controllers.brainstorm,
+            isCardSort || isRetro ? 'Add cards' : 'Brainstorm'),
         const SizedBox(height: 12),
         _interstitialField(controllers.group, 'Group'),
         if (enableVote) ...[
@@ -871,6 +930,10 @@ class _InterstitialSection extends StatelessWidget {
         if (enablePrioritise) ...[
           const SizedBox(height: 12),
           _interstitialField(controllers.prioritise, 'Prioritise'),
+        ],
+        if (isRetro) ...[
+          const SizedBox(height: 12),
+          _interstitialField(controllers.actionItems, 'Action Items'),
         ],
         const SizedBox(height: 8),
       ],
