@@ -61,6 +61,8 @@ func main() {
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
+			auth.POST("/forgot-password", authHandler.ForgotPassword)
+			auth.POST("/reset-password", authHandler.ResetPassword)
 			auth.GET("/oauth/:provider/start", oauthHandler.Start)
 			auth.GET("/oauth/:provider/callback", oauthHandler.Callback)
 		}

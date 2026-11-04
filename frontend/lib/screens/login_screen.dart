@@ -118,7 +118,15 @@ class _LoginScreenState extends State<LoginScreen> {
                             )
                           : const Text('Sign In'),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => context.push('/auth/forgot-password'),
+                        child: const Text('Forgot password?'),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     SsoButtons(redirect: redirect),
                     const SizedBox(height: 12),
                     TextButton(

@@ -4,6 +4,8 @@ import 'screens/app_shell.dart';
 import 'screens/profile_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
+import 'screens/forgot_password_screen.dart';
+import 'screens/reset_password_screen.dart';
 import 'screens/auth_callback_screen.dart';
 import 'screens/integration_callback_screen.dart';
 import 'screens/brainstorm_export_screen.dart';
@@ -26,11 +28,22 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
         final isOnAuthPage = loc.startsWith('/auth/login') ||
             loc.startsWith('/auth/register') ||
             loc.startsWith('/auth/callback');
+        // Password reset pages must work whether or not the visitor happens
+        // to be logged in on this browser (e.g. clicking the email link
+        // while still signed in elsewhere) — so they're excluded from the
+        // forced-login redirect below, but deliberately NOT folded into
+        // isOnAuthPage, or an authenticated user would get bounced away
+        // from them by the "already logged in" redirect further down.
+        final isPasswordResetPage = loc.startsWith('/auth/forgot-password') ||
+            loc.startsWith('/auth/reset-password');
         // Slideshow handles guest access internally — don't redirect to login
         final isSlideshow =
             loc.contains('/brainstorms/') && loc.startsWith('/groups/');
 
-        if (!auth.isAuthenticated && !isOnAuthPage && !isSlideshow) {
+        if (!auth.isAuthenticated &&
+            !isOnAuthPage &&
+            !isPasswordResetPage &&
+            !isSlideshow) {
           final dest = Uri.encodeComponent(state.uri.toString());
           return '/auth/login?redirect=$dest';
         }
@@ -53,6 +66,15 @@ GoRouter createRouter(AuthProvider auth) => GoRouter(
         GoRoute(
             path: '/auth/register',
             builder: (_, __) => const RegisterScreen()),
+        GoRoute(
+            path: '/auth/forgot-password',
+            builder: (_, __) => const ForgotPasswordScreen()),
+        GoRoute(
+          path: '/auth/reset-password',
+          builder: (_, state) => ResetPasswordScreen(
+            token: state.uri.queryParameters['token'],
+          ),
+        ),
         GoRoute(
           path: '/auth/callback',
           builder: (_, state) => AuthCallbackScreen(

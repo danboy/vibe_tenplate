@@ -14,7 +14,8 @@ type User struct {
 	DeletedAt gorm.DeletedAt `json:"-"        gorm:"index"`
 	Username  string         `json:"username" gorm:"uniqueIndex;not null"`
 	Email     string         `json:"email"    gorm:"uniqueIndex;not null"`
-	Password         string         `json:"-"        gorm:"not null"`
+	Password          string         `json:"-"        gorm:"not null"`
+	PasswordChangedAt *time.Time     `json:"-"        gorm:"column:password_changed_at"`
 	IsAdmin          bool           `json:"is_admin" gorm:"default:false"`
 	StripeCustomerID string         `json:"-"        gorm:"type:text"`
 	Groups           []Group        `json:"groups,omitempty" gorm:"many2many:user_groups;"`

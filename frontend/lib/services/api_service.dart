@@ -120,6 +120,25 @@ class ApiService {
     );
   }
 
+  Future<void> forgotPassword(String email) async {
+    final response = await _post(
+      Uri.parse('$baseUrl/auth/forgot-password'),
+      body: json.encode({'email': email}),
+    );
+    await _parseMap(response);
+  }
+
+  Future<void> resetPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    final response = await _post(
+      Uri.parse('$baseUrl/auth/reset-password'),
+      body: json.encode({'token': token, 'password': newPassword}),
+    );
+    await _parseMap(response);
+  }
+
   Future<User> getMe() async {
     final response = await _get(Uri.parse('$baseUrl/users/me'));
     final data = await _parseMap(response);
