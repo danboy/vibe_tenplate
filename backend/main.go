@@ -140,6 +140,13 @@ func main() {
 			{
 				admin.GET("/teams", adminHandler.ListAllTeams)
 				admin.PATCH("/teams/:id/plan", adminHandler.UpdateTeamPlan)
+				admin.DELETE("/teams/:id", adminHandler.DeleteTeam)
+				admin.GET("/users", adminHandler.ListUsers)
+				admin.DELETE("/users/:id", adminHandler.DeleteUser)
+				admin.GET("/groups", adminHandler.ListGroups)
+				admin.DELETE("/groups/:id", adminHandler.DeleteGroup)
+				admin.GET("/brainstorms", adminHandler.ListBrainstorms)
+				admin.DELETE("/brainstorms/:id", adminHandler.DeleteBrainstorm)
 			}
 		}
 	}

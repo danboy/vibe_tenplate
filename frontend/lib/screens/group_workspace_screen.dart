@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/group.dart';
 import '../models/brainstorm.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/confirm_delete_dialog.dart';
 import 'app_shell.dart';
 
 class GroupWorkspaceScreen extends StatefulWidget {
@@ -71,6 +72,8 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     var enableVote = true;
     var enablePrioritise = true;
     var guestsEnabled = false;
+    var timerEnabled = false;
+    final timerMinutesCtrl = TextEditingController(text: '5');
     final canCustomize = group.plan != 'free';
 
     final confirmed = await showDialog<bool>(
@@ -203,6 +206,32 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                       value: guestsEnabled,
                       onChanged: (v) => setLocal(() => guestsEnabled = v ?? false),
                     ),
+                    if (type == 'retro') ...[
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Timer'),
+                        subtitle: const Text('Countdown shown during the add-cards step'),
+                        value: timerEnabled,
+                        onChanged: (v) => setLocal(() => timerEnabled = v ?? false),
+                      ),
+                      if (timerEnabled)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16, bottom: 8),
+                          child: SizedBox(
+                            width: 120,
+                            child: TextFormField(
+                              controller: timerMinutesCtrl,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Minutes',
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                     const SizedBox(height: 8),
                     _InterstitialSection(
                       controllers: iCtrl,
@@ -272,6 +301,8 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
         enableVote: type == 'brainstorm' && enableVote,
         enablePrioritise: type == 'brainstorm' && enablePrioritise,
         guestsEnabled: guestsEnabled,
+        timerEnabled: type == 'retro' && timerEnabled,
+        timerMinutes: int.tryParse(timerMinutesCtrl.text.trim()) ?? 5,
         interstitialProblem: iCtrl.problem.text.trim(),
         interstitialBrainstorm: iCtrl.brainstorm.text.trim(),
         interstitialGroup: iCtrl.group.text.trim(),
@@ -305,6 +336,9 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     var enableVote = brainstorm.enableVote;
     var enablePrioritise = brainstorm.enablePrioritise;
     var guestsEnabled = brainstorm.guestsEnabled;
+    var timerEnabled = brainstorm.timerEnabled;
+    final timerMinutesCtrl =
+        TextEditingController(text: '${brainstorm.timerMinutes}');
     // Fetch group to get current plan
     final group = await context.read<AuthProvider>().api.getGroup(widget.groupSlug);
     if (!mounted) return;
@@ -424,6 +458,32 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                       value: guestsEnabled,
                       onChanged: (v) => setLocal(() => guestsEnabled = v ?? false),
                     ),
+                    if (brainstorm.isRetro) ...[
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Timer'),
+                        subtitle: const Text('Countdown shown during the add-cards step'),
+                        value: timerEnabled,
+                        onChanged: (v) => setLocal(() => timerEnabled = v ?? false),
+                      ),
+                      if (timerEnabled)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16, bottom: 8),
+                          child: SizedBox(
+                            width: 120,
+                            child: TextFormField(
+                              controller: timerMinutesCtrl,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Minutes',
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                     const SizedBox(height: 8),
                     _InterstitialSection(
                       controllers: iCtrl,
@@ -492,6 +552,8 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
         enableVote: !brainstorm.isCardSort && enableVote,
         enablePrioritise: !brainstorm.isCardSort && !brainstorm.isRetro && enablePrioritise,
         guestsEnabled: guestsEnabled,
+        timerEnabled: brainstorm.isRetro && timerEnabled,
+        timerMinutes: int.tryParse(timerMinutesCtrl.text.trim()) ?? 5,
         interstitialProblem: iCtrl.problem.text.trim(),
         interstitialBrainstorm: iCtrl.brainstorm.text.trim(),
         interstitialGroup: iCtrl.group.text.trim(),
@@ -509,30 +571,14 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
   }
 
   Future<void> _confirmDelete(Group group, Brainstorm brainstorm) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Brainstorm'),
-        content: Text(
-            'Are you sure you want to delete "${brainstorm.name}"? This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await confirmDelete(
+      context,
+      title: 'Delete Brainstorm',
+      message:
+          'Are you sure you want to delete "${brainstorm.name}"? This cannot be undone.',
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     try {
       final api = context.read<AuthProvider>().api;

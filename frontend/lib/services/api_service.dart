@@ -9,6 +9,7 @@ import '../models/team_sso_config.dart';
 import '../models/goal.dart';
 import '../models/team_integration.dart';
 import '../models/export_run.dart';
+import '../models/admin.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -611,6 +612,8 @@ class ApiService {
     required bool enableVote,
     required bool enablePrioritise,
     bool guestsEnabled = false,
+    bool timerEnabled = false,
+    int timerMinutes = 5,
     String interstitialProblem = '',
     String interstitialBrainstorm = '',
     String interstitialGroup = '',
@@ -630,6 +633,8 @@ class ApiService {
         'enable_vote': enableVote,
         'enable_prioritise': enablePrioritise,
         'guests_enabled': guestsEnabled,
+        'timer_enabled': timerEnabled,
+        'timer_minutes': timerMinutes,
         'interstitial_problem': interstitialProblem,
         'interstitial_brainstorm': interstitialBrainstorm,
         'interstitial_group': interstitialGroup,
@@ -652,6 +657,8 @@ class ApiService {
     required bool enableVote,
     required bool enablePrioritise,
     bool guestsEnabled = false,
+    bool timerEnabled = false,
+    int timerMinutes = 5,
     String interstitialProblem = '',
     String interstitialBrainstorm = '',
     String interstitialGroup = '',
@@ -669,6 +676,8 @@ class ApiService {
         'enable_vote': enableVote,
         'enable_prioritise': enablePrioritise,
         'guests_enabled': guestsEnabled,
+        'timer_enabled': timerEnabled,
+        'timer_minutes': timerMinutes,
         'interstitial_problem': interstitialProblem,
         'interstitial_brainstorm': interstitialBrainstorm,
         'interstitial_group': interstitialGroup,
@@ -706,6 +715,51 @@ class ApiService {
     );
     final data = await _parseMap(response);
     return Team.fromJson(data);
+  }
+
+  Future<void> adminDeleteTeam(String teamId) async {
+    final response = await _delete(Uri.parse('$baseUrl/admin/teams/$teamId'));
+    await _parseMap(response);
+  }
+
+  Future<List<AdminUserSummary>> adminListUsers() async {
+    final response = await _get(Uri.parse('$baseUrl/admin/users'));
+    final list = await _parseList(response);
+    return list
+        .map((u) => AdminUserSummary.fromJson(u as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> adminDeleteUser(String userId) async {
+    final response = await _delete(Uri.parse('$baseUrl/admin/users/$userId'));
+    await _parseMap(response);
+  }
+
+  Future<List<AdminGroupSummary>> adminListGroups() async {
+    final response = await _get(Uri.parse('$baseUrl/admin/groups'));
+    final list = await _parseList(response);
+    return list
+        .map((g) => AdminGroupSummary.fromJson(g as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> adminDeleteGroup(String groupId) async {
+    final response = await _delete(Uri.parse('$baseUrl/admin/groups/$groupId'));
+    await _parseMap(response);
+  }
+
+  Future<List<AdminActivitySummary>> adminListBrainstorms() async {
+    final response = await _get(Uri.parse('$baseUrl/admin/brainstorms'));
+    final list = await _parseList(response);
+    return list
+        .map((b) => AdminActivitySummary.fromJson(b as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> adminDeleteBrainstorm(String brainstormId) async {
+    final response =
+        await _delete(Uri.parse('$baseUrl/admin/brainstorms/$brainstormId'));
+    await _parseMap(response);
   }
 
   Future<Brainstorm> setPresenter({

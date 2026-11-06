@@ -44,12 +44,30 @@ type CreateBrainstormRequest struct {
 	EnablePrioritise bool   `json:"enable_prioritise"`
 	GuestsEnabled    bool   `json:"guests_enabled"`
 
+	TimerEnabled bool `json:"timer_enabled"`
+	TimerMinutes int  `json:"timer_minutes"`
+
 	InterstitialProblem     string `json:"interstitial_problem"`
 	InterstitialBrainstorm  string `json:"interstitial_brainstorm"`
 	InterstitialGroup       string `json:"interstitial_group"`
 	InterstitialVote        string `json:"interstitial_vote"`
 	InterstitialPrioritise  string `json:"interstitial_prioritise"`
 	InterstitialActionItems string `json:"interstitial_action_items"`
+}
+
+// normalizeTimer clamps the timer to a sane duration and forces it off for
+// non-retro activities — the countdown only applies to a retro's first step.
+func normalizeTimer(isRetro bool, enabled bool, minutes int) (bool, int) {
+	if minutes <= 0 {
+		minutes = 5
+	}
+	if minutes > 180 {
+		minutes = 180
+	}
+	if !isRetro {
+		return false, minutes
+	}
+	return enabled, minutes
 }
 
 // loadGroupAsMember fetches the group by slug with members preloaded and
@@ -174,6 +192,7 @@ func (h *BrainstormHandler) CreateBrainstorm(c *gin.Context) {
 		req.EnableVote = true
 		req.EnablePrioritise = true
 		req.GuestsEnabled = false
+		req.TimerEnabled = false
 		req.InterstitialProblem = ""
 		req.InterstitialBrainstorm = ""
 		req.InterstitialGroup = ""
@@ -197,6 +216,8 @@ func (h *BrainstormHandler) CreateBrainstorm(c *gin.Context) {
 		req.EnablePrioritise = false
 	}
 
+	req.TimerEnabled, req.TimerMinutes = normalizeTimer(isRetro, req.TimerEnabled, req.TimerMinutes)
+
 	slug := utils.UniqueSlug(utils.Slugify(req.Name), func(s string) bool {
 		var count int64
 		h.db.Model(&models.Brainstorm{}).Where("group_id = ? AND slug = ?", group.ID, s).Count(&count)
@@ -216,6 +237,8 @@ func (h *BrainstormHandler) CreateBrainstorm(c *gin.Context) {
 		EnableVote:              req.EnableVote,
 		EnablePrioritise:        req.EnablePrioritise,
 		GuestsEnabled:           req.GuestsEnabled,
+		TimerEnabled:            req.TimerEnabled,
+		TimerMinutes:            req.TimerMinutes,
 		InterstitialProblem:     req.InterstitialProblem,
 		InterstitialBrainstorm:  req.InterstitialBrainstorm,
 		InterstitialGroup:       req.InterstitialGroup,
@@ -235,6 +258,8 @@ func (h *BrainstormHandler) CreateBrainstorm(c *gin.Context) {
 		"enable_vote":             req.EnableVote,
 		"enable_prioritise":       req.EnablePrioritise,
 		"guests_enabled":          req.GuestsEnabled,
+		"timer_enabled":           req.TimerEnabled,
+		"timer_minutes":           req.TimerMinutes,
 		"interstitial_problem":    req.InterstitialProblem,
 		"interstitial_brainstorm": req.InterstitialBrainstorm,
 		"interstitial_group":      req.InterstitialGroup,
@@ -329,6 +354,9 @@ func (h *BrainstormHandler) UpdateBrainstorm(c *gin.Context) {
 		EnablePrioritise bool   `json:"enable_prioritise"`
 		GuestsEnabled    bool   `json:"guests_enabled"`
 
+		TimerEnabled bool `json:"timer_enabled"`
+		TimerMinutes int  `json:"timer_minutes"`
+
 		InterstitialProblem     string `json:"interstitial_problem"`
 		InterstitialBrainstorm  string `json:"interstitial_brainstorm"`
 		InterstitialGroup       string `json:"interstitial_group"`
@@ -350,6 +378,7 @@ func (h *BrainstormHandler) UpdateBrainstorm(c *gin.Context) {
 		req.EnableVote = true
 		req.EnablePrioritise = true
 		req.GuestsEnabled = false
+		req.TimerEnabled = false
 		req.InterstitialProblem = ""
 		req.InterstitialBrainstorm = ""
 		req.InterstitialGroup = ""
@@ -374,6 +403,8 @@ func (h *BrainstormHandler) UpdateBrainstorm(c *gin.Context) {
 		req.EnablePrioritise = false
 	}
 
+	req.TimerEnabled, req.TimerMinutes = normalizeTimer(brainstorm.Type == "retro", req.TimerEnabled, req.TimerMinutes)
+
 	h.db.Model(&brainstorm).UpdateColumns(map[string]any{
 		"name":                      req.Name,
 		"description":               req.Description,
@@ -382,6 +413,8 @@ func (h *BrainstormHandler) UpdateBrainstorm(c *gin.Context) {
 		"enable_vote":               req.EnableVote,
 		"enable_prioritise":         req.EnablePrioritise,
 		"guests_enabled":            req.GuestsEnabled,
+		"timer_enabled":             req.TimerEnabled,
+		"timer_minutes":             req.TimerMinutes,
 		"interstitial_problem":      req.InterstitialProblem,
 		"interstitial_brainstorm":   req.InterstitialBrainstorm,
 		"interstitial_group":        req.InterstitialGroup,
@@ -389,6 +422,8 @@ func (h *BrainstormHandler) UpdateBrainstorm(c *gin.Context) {
 		"interstitial_prioritise":   req.InterstitialPrioritise,
 		"interstitial_action_items": req.InterstitialActionItems,
 	})
+
+	ws.NotifyTimerConfig(brainstorm.ID, req.TimerEnabled, req.TimerMinutes)
 
 	h.db.Preload("Creator").Preload("Presenter").First(&brainstorm, "id = ?", brainstorm.ID)
 	c.JSON(http.StatusOK, brainstorm)

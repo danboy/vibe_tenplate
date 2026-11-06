@@ -29,6 +29,11 @@ type Brainstorm struct {
 
 	GuestsEnabled bool   `json:"guests_enabled" gorm:"not null;default:false"`
 
+	// Optional countdown timer shown during the first retro step (adding
+	// cards). TimerMinutes is only meaningful when TimerEnabled is true.
+	TimerEnabled bool `json:"timer_enabled" gorm:"not null;default:false"`
+	TimerMinutes int  `json:"timer_minutes" gorm:"not null;default:5"`
+
 	// Custom interstitial descriptions (empty = use app default)
 	InterstitialProblem     string `json:"interstitial_problem"     gorm:"type:text;not null;default:''"`
 	InterstitialBrainstorm  string `json:"interstitial_brainstorm"  gorm:"type:text;not null;default:''"`

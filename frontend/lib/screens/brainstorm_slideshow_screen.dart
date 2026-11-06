@@ -55,6 +55,41 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
   String _problemStatement = '';
   Timer? _psDebounce;
   bool _wsInitialized = false;
+
+  // Retro step-1 countdown timer. endsAt is only meaningful while running;
+  // remainingSeconds holds the paused/reset value otherwise. _timerTicker
+  // just forces a rebuild once a second so the displayed countdown moves —
+  // the authoritative state always lives on the server.
+  int _timerDurationSeconds = 0;
+  bool _timerRunning = false;
+  DateTime? _timerEndsAt;
+  int _timerRemainingSeconds = 0;
+  Timer? _timerTicker;
+
+  int get _timerSecondsLeft {
+    if (_timerRunning && _timerEndsAt != null) {
+      return _timerEndsAt!.difference(DateTime.now()).inSeconds.clamp(0, _timerDurationSeconds);
+    }
+    return _timerRemainingSeconds;
+  }
+
+  void _applyTimerState(Map<String, dynamic> t) {
+    _timerDurationSeconds = (t['duration_seconds'] as num?)?.toInt() ?? 0;
+    _timerRunning = t['running'] as bool? ?? false;
+    final endsAt = t['ends_at'] as String?;
+    _timerEndsAt = endsAt == null ? null : DateTime.parse(endsAt);
+    _timerRemainingSeconds = (t['remaining_seconds'] as num?)?.toInt() ?? 0;
+    _timerTicker?.cancel();
+    if (_timerRunning) {
+      _timerTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  void _startTimer() => _send('timer_start', {});
+  void _pauseTimer() => _send('timer_pause', {});
+  void _resetTimer() => _send('timer_reset', {});
   final Set<int> _dismissedInterstitials = {};
 
   bool get _showInterstitial =>
@@ -212,6 +247,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
             enableProblem: info['enable_problem'] as bool? ?? true,
             enableVote: info['enable_vote'] as bool? ?? true,
             enablePrioritise: info['enable_prioritise'] as bool? ?? true,
+            timerEnabled: info['timer_enabled'] as bool? ?? false,
+            timerMinutes: info['timer_minutes'] as int? ?? 5,
             interstitialProblem: info['interstitial_problem'] as String? ?? '',
             interstitialBrainstorm:
                 info['interstitial_brainstorm'] as String? ?? '',
@@ -335,6 +372,9 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           _actionItems = (p['action_items'] as List? ?? [])
               .map((a) => ActionItem.fromJson(a as Map<String, dynamic>))
               .toList();
+          if (p['timer'] != null) {
+            _applyTimerState(p['timer'] as Map<String, dynamic>);
+          }
           _wsInitialized = true;
           if (_notes.isNotEmpty && (_slide == 1 || _slide == 2 || _slide == 3)) {
             _centerIfNeeded();
@@ -427,6 +467,9 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
 
         case 'action_item_delete':
           _actionItems.removeWhere((a) => a.id == payload['id'] as String);
+
+        case 'timer_update':
+          _applyTimerState(payload as Map<String, dynamic>);
       }
     });
   }
@@ -872,6 +915,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
   @override
   void dispose() {
     _psDebounce?.cancel();
+    _timerTicker?.cancel();
     _channel?.sink.close();
     super.dispose();
   }
@@ -1031,6 +1075,15 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                     : _slideLabels,
             icons: isRetro ? _retroSlideIconsBase : _slideIcons,
           ),
+          if (isRetroBoardMode && _timerDurationSeconds > 0)
+            _RetroTimerBar(
+              secondsLeft: _timerSecondsLeft,
+              running: _timerRunning,
+              isPresenter: isPresenter,
+              onStart: _startTimer,
+              onPause: _pauseTimer,
+              onReset: _resetTimer,
+            ),
           Expanded(
             child: Stack(
               children: [
@@ -1375,6 +1428,67 @@ class _SlideInterstitial extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─── Retro step-1 timer ───────────────────────────────────────────────────────
+
+class _RetroTimerBar extends StatelessWidget {
+  final int secondsLeft;
+  final bool running;
+  final bool isPresenter;
+  final VoidCallback onStart;
+  final VoidCallback onPause;
+  final VoidCallback onReset;
+
+  const _RetroTimerBar({
+    required this.secondsLeft,
+    required this.running,
+    required this.isPresenter,
+    required this.onStart,
+    required this.onPause,
+    required this.onReset,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final minutes = (secondsLeft ~/ 60).toString().padLeft(2, '0');
+    final seconds = (secondsLeft % 60).toString().padLeft(2, '0');
+    final expired = secondsLeft == 0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      color: expired ? Colors.red.shade100 : Colors.orange.shade200,
+      child: Row(
+        children: [
+          Icon(Icons.timer_outlined,
+              size: 18, color: expired ? Colors.red.shade900 : Colors.orange.shade900),
+          const SizedBox(width: 8),
+          Text(
+            '$minutes:$seconds',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: expired ? Colors.red.shade900 : Colors.orange.shade900,
+            ),
+          ),
+          const Spacer(),
+          if (isPresenter) ...[
+            IconButton(
+              icon: Icon(running ? Icons.pause : Icons.play_arrow,
+                  color: expired ? Colors.red.shade900 : Colors.orange.shade900),
+              tooltip: running ? 'Pause timer' : 'Start timer',
+              onPressed: running ? onPause : onStart,
+            ),
+            IconButton(
+              icon: Icon(Icons.restart_alt,
+                  color: expired ? Colors.red.shade900 : Colors.orange.shade900),
+              tooltip: 'Reset timer',
+              onPressed: onReset,
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -15,6 +15,8 @@ class Brainstorm {
   final bool enableVote;
   final bool enablePrioritise;
   final bool guestsEnabled;
+  final bool timerEnabled;
+  final int timerMinutes;
   final String problemStatement;
   final int activeUsers;
   final String interstitialProblem;
@@ -41,6 +43,8 @@ class Brainstorm {
     this.enableVote = true,
     this.enablePrioritise = true,
     this.guestsEnabled = false,
+    this.timerEnabled = false,
+    this.timerMinutes = 5,
     this.problemStatement = '',
     this.activeUsers = 0,
     this.interstitialProblem = '',
@@ -87,6 +91,8 @@ class Brainstorm {
         enableVote: json['enable_vote'] as bool? ?? true,
         enablePrioritise: json['enable_prioritise'] as bool? ?? true,
         guestsEnabled: json['guests_enabled'] as bool? ?? false,
+        timerEnabled: json['timer_enabled'] as bool? ?? false,
+        timerMinutes: json['timer_minutes'] as int? ?? 5,
         problemStatement: json['problem_statement'] as String? ?? '',
         activeUsers: json['active_users'] as int? ?? 0,
         interstitialProblem: json['interstitial_problem'] as String? ?? '',
@@ -114,5 +120,7 @@ class Brainstorm {
         enableProblem: enableProblem,
         enableVote: enableVote,
         enablePrioritise: enablePrioritise,
+        timerEnabled: timerEnabled,
+        timerMinutes: timerMinutes,
       );
 }

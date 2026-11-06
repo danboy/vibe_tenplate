@@ -68,6 +68,8 @@ func (h *GuestHandler) GetGuestBrainstorm(c *gin.Context) {
 		"enable_problem":            brainstorm.EnableProblem,
 		"enable_vote":               brainstorm.EnableVote,
 		"enable_prioritise":         brainstorm.EnablePrioritise,
+		"timer_enabled":             brainstorm.TimerEnabled,
+		"timer_minutes":             brainstorm.TimerMinutes,
 		"interstitial_problem":      brainstorm.InterstitialProblem,
 		"interstitial_brainstorm":   brainstorm.InterstitialBrainstorm,
 		"interstitial_group":        brainstorm.InterstitialGroup,
