@@ -43,6 +43,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
   bool _loginRequired = false;
   bool _isGuest = false;
   String? _guestUserId;
+  String _guestDisplayName = '';
 
   // The current user's id, whether authenticated or a guest — AuthProvider
   // is never populated for guest sessions, so ownership checks (blur, vote,
@@ -158,13 +159,17 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
 
   static const _prefsKey = 'dismissed_interstitials';
   static const _lastColorPrefsKey = 'last_note_color';
+  static const _guestNamePrefsKey = 'guest_display_name';
+  static const _problemTextSizePrefsKey = 'problem_statement_text_size';
   String _lastNoteColor = _noteColors.first;
+  _ProblemTextSize _problemTextSize = _ProblemTextSize.medium;
 
   @override
   void initState() {
     super.initState();
     _loadDismissed();
     _loadLastColor();
+    _loadProblemTextSize();
     _loadAndConnect();
   }
 
@@ -197,6 +202,19 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
     prefs.setString(_lastColorPrefsKey, color);
   }
 
+  Future<void> _loadProblemTextSize() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_problemTextSizePrefsKey);
+    final size = _ProblemTextSize.fromStorage(saved);
+    if (mounted) setState(() => _problemTextSize = size);
+  }
+
+  void _setProblemTextSize(_ProblemTextSize size) {
+    setState(() => _problemTextSize = size);
+    SharedPreferences.getInstance()
+        .then((prefs) => prefs.setString(_problemTextSizePrefsKey, size.storageValue));
+  }
+
   Future<void> _loadAndConnect() async {
     final auth = context.read<AuthProvider>();
 
@@ -226,14 +244,24 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           setState(() => _loginRequired = true);
           return;
         }
-        final name = await _showGuestNameDialog();
-        if (name == null || !mounted) return;
+        final prefs = await SharedPreferences.getInstance();
+        final savedName = prefs.getString(_guestNamePrefsKey);
+        String name;
+        if (savedName != null && savedName.trim().isNotEmpty) {
+          name = savedName;
+        } else {
+          final entered = await _showGuestNameDialog();
+          if (entered == null || !mounted) return;
+          name = entered;
+          await prefs.setString(_guestNamePrefsKey, name);
+        }
         final (token, guestUserId) = await const ApiService()
             .guestJoinBrainstorm(info['id'] as String, name);
         if (!mounted) return;
         setState(() {
           _isGuest = true;
           _guestUserId = guestUserId;
+          _guestDisplayName = name;
           // Minimal project info for guests, but still carrying every field
           // that affects which slides/UI show (type, retro style, enabled
           // stages, interstitial copy) — otherwise guests fall back to the
@@ -272,14 +300,15 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
     }
   }
 
-  Future<String?> _showGuestNameDialog() {
-    final ctrl = TextEditingController();
+  Future<String?> _showGuestNameDialog({String? initialName}) {
+    final isRename = initialName != null;
+    final ctrl = TextEditingController(text: initialName ?? '');
     final formKey = GlobalKey<FormState>();
     return showDialog<String>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: isRename,
       builder: (ctx) => AlertDialog(
-        title: const Text('Join as Guest'),
+        title: Text(isRename ? 'Change your name' : 'Join as Guest'),
         content: Form(
           key: formKey,
           child: TextFormField(
@@ -309,11 +338,42 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                 Navigator.pop(ctx, ctrl.text.trim());
               }
             },
-            child: const Text('Join'),
+            child: Text(isRename ? 'Save' : 'Join'),
           ),
         ],
       ),
     );
+  }
+
+  // Lets a joined guest change their display name mid-session. Guest
+  // identity is a short-lived JWT with the name baked in (no server-side
+  // guest account to patch), so this re-joins with a fresh token/user id —
+  // notes/votes already cast under the old guest id keep showing that name,
+  // same as a registered user's past notes keep their author at creation time.
+  Future<void> _changeGuestName() async {
+    if (_brainstorm == null) return;
+    final newName = await _showGuestNameDialog(initialName: _guestDisplayName);
+    if (newName == null || !mounted || newName == _guestDisplayName) return;
+    try {
+      final (token, guestUserId) = await const ApiService()
+          .guestJoinBrainstorm(_brainstorm!.id, newName);
+      if (!mounted) return;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_guestNamePrefsKey, newName);
+      if (!mounted) return;
+      _channel?.sink.close();
+      setState(() {
+        _guestUserId = guestUserId;
+        _guestDisplayName = newName;
+      });
+      _connect(_brainstorm!.id, guestToken: token);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update name')),
+        );
+      }
+    }
   }
 
   bool get _isPresenter {
@@ -1016,6 +1076,12 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           ],
         ),
         actions: [
+          if (_isGuest)
+            IconButton(
+              icon: const Icon(Icons.badge_outlined),
+              tooltip: 'Change your name ($_guestDisplayName)',
+              onPressed: _changeGuestName,
+            ),
           if (isPresenter && enabledSlides.isNotEmpty && _slide == enabledSlides.last)
             IconButton(
               icon: const Icon(Icons.ios_share),
@@ -1112,6 +1178,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                       ? _ProblemStatementSlide(
                           text: _problemStatement,
                           isPresenter: isPresenter,
+                          textSize: _problemTextSize,
+                          onTextSizeChanged: _setProblemTextSize,
                           onChanged: (text) {
                             setState(() => _problemStatement = text);
                             _psDebounce?.cancel();
@@ -2572,9 +2640,8 @@ class _GroupDragAreaState extends State<_GroupDragArea> {
 // Shares the same regex as _ProblemTextController for consistency.
 class _ProblemRichText extends StatelessWidget {
   final String text;
-  const _ProblemRichText({required this.text});
-
-  static const _base = TextStyle(fontSize: 36, height: 1.6);
+  final double fontSize;
+  const _ProblemRichText({required this.text, this.fontSize = 36});
 
   List<InlineSpan> _parse(String text, TextStyle base) {
     final spans = <InlineSpan>[];
@@ -2602,7 +2669,8 @@ class _ProblemRichText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = _base.copyWith(color: Theme.of(context).colorScheme.onSurface);
+    final base = TextStyle(
+        fontSize: fontSize, height: 1.6, color: Theme.of(context).colorScheme.onSurface);
     return RichText(text: TextSpan(children: _parse(text, base)));
   }
 }
@@ -2669,8 +2737,17 @@ class _ProblemTextController extends TextEditingController {
 class _ProblemToolbar extends StatefulWidget {
   final TextEditingController ctrl;
   final void Function(String) onChanged;
+  final bool showFormatting;
+  final _ProblemTextSize textSize;
+  final void Function(_ProblemTextSize) onTextSizeChanged;
 
-  const _ProblemToolbar({required this.ctrl, required this.onChanged});
+  const _ProblemToolbar({
+    required this.ctrl,
+    required this.onChanged,
+    required this.showFormatting,
+    required this.textSize,
+    required this.onTextSizeChanged,
+  });
 
   @override
   State<_ProblemToolbar> createState() => _ProblemToolbarState();
@@ -2684,15 +2761,41 @@ class _ProblemToolbarState extends State<_ProblemToolbar> {
     if (!sel.isValid) return;
     final text = widget.ctrl.text;
     final selected = sel.textInside(text);
-    final replacement = '$marker$selected$marker';
-    final newText = text.replaceRange(sel.start, sel.end, replacement);
-    final newOffset = sel.isCollapsed
-        ? sel.start + marker.length
-        : sel.end + marker.length * 2;
-    widget.ctrl.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: newOffset),
-    );
+    final m = marker.length;
+
+    // Toggle off if the selection is already wrapped in this marker — either
+    // because the markers themselves are included in the selection, or
+    // because the selection is just the inner text and the markers sit
+    // immediately outside it (the common case when selecting rendered,
+    // already-bold/underlined/etc text).
+    final selWrapped = selected.length >= m * 2 &&
+        selected.startsWith(marker) &&
+        selected.endsWith(marker);
+    final outerWrapped = !selWrapped &&
+        sel.start >= m &&
+        sel.end + m <= text.length &&
+        text.substring(sel.start - m, sel.start) == marker &&
+        text.substring(sel.end, sel.end + m) == marker;
+
+    String newText;
+    TextSelection newSelection;
+    if (selWrapped) {
+      final inner = selected.substring(m, selected.length - m);
+      newText = text.replaceRange(sel.start, sel.end, inner);
+      newSelection =
+          TextSelection(baseOffset: sel.start, extentOffset: sel.start + inner.length);
+    } else if (outerWrapped) {
+      newText = text.replaceRange(sel.start - m, sel.end + m, selected);
+      newSelection = TextSelection(
+          baseOffset: sel.start - m, extentOffset: sel.start - m + selected.length);
+    } else {
+      final replacement = '$marker$selected$marker';
+      newText = text.replaceRange(sel.start, sel.end, replacement);
+      final newOffset = sel.isCollapsed ? sel.start + m : sel.end + m * 2;
+      newSelection = TextSelection.collapsed(offset: newOffset);
+    }
+
+    widget.ctrl.value = TextEditingValue(text: newText, selection: newSelection);
     widget.onChanged(newText);
   }
 
@@ -2717,39 +2820,76 @@ class _ProblemToolbarState extends State<_ProblemToolbar> {
       children: [
         Row(
           children: [
-            _ToolbarButton(
-              label: 'B',
-              bold: true,
-              tooltip: 'Bold',
-              onPressed: () => _wrapSelection('**'),
-            ),
-            const SizedBox(width: 6),
-            _ToolbarButton(
-              label: 'U',
-              underline: true,
-              tooltip: 'Underline',
-              onPressed: () => _wrapSelection('__'),
-            ),
-            const SizedBox(width: 6),
-            _ToolbarButton(
-              label: 'I',
-              italic: true,
-              tooltip: 'Italic',
-              onPressed: () => _wrapSelection('*'),
-            ),
-            const SizedBox(width: 6),
-            _ToolbarButton(
-              label: 'S',
-              strikethrough: true,
-              tooltip: 'Strikethrough',
-              onPressed: () => _wrapSelection('~~'),
-            ),
-            const SizedBox(width: 6),
-            _ToolbarButton(
-              label: '😊',
-              tooltip: 'Emoji',
-              active: _showEmoji,
-              onPressed: () => setState(() => _showEmoji = !_showEmoji),
+            if (widget.showFormatting) ...[
+              _ToolbarButton(
+                label: 'B',
+                bold: true,
+                tooltip: 'Bold',
+                onPressed: () => _wrapSelection('**'),
+              ),
+              const SizedBox(width: 6),
+              _ToolbarButton(
+                label: 'U',
+                underline: true,
+                tooltip: 'Underline',
+                onPressed: () => _wrapSelection('__'),
+              ),
+              const SizedBox(width: 6),
+              _ToolbarButton(
+                label: 'I',
+                italic: true,
+                tooltip: 'Italic',
+                onPressed: () => _wrapSelection('*'),
+              ),
+              const SizedBox(width: 6),
+              _ToolbarButton(
+                label: 'S',
+                strikethrough: true,
+                tooltip: 'Strikethrough',
+                onPressed: () => _wrapSelection('~~'),
+              ),
+              const SizedBox(width: 6),
+              _ToolbarButton(
+                label: '😊',
+                tooltip: 'Emoji',
+                active: _showEmoji,
+                onPressed: () => setState(() => _showEmoji = !_showEmoji),
+              ),
+              const SizedBox(width: 14),
+              Container(width: 1, height: 20, color: Theme.of(context).colorScheme.outline),
+              const SizedBox(width: 14),
+            ],
+            PopupMenuButton<_ProblemTextSize>(
+              tooltip: 'Text size',
+              initialValue: widget.textSize,
+              onSelected: widget.onTextSizeChanged,
+              itemBuilder: (context) => [
+                for (final size in _ProblemTextSize.values)
+                  PopupMenuItem(
+                    value: size,
+                    child: Row(
+                      children: [
+                        if (size == widget.textSize)
+                          Icon(Icons.check, size: 16, color: Theme.of(context).colorScheme.primary)
+                        else
+                          const SizedBox(width: 16),
+                        const SizedBox(width: 8),
+                        Text(size.label),
+                      ],
+                    ),
+                  ),
+              ],
+              child: Container(
+                width: 32,
+                height: 32,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Theme.of(context).colorScheme.outline),
+                ),
+                child: Icon(Icons.format_size, size: 18, color: Theme.of(context).colorScheme.onSurface),
+              ),
             ),
           ],
         ),
@@ -2839,14 +2979,44 @@ class _ToolbarButton extends StatelessWidget {
   }
 }
 
+enum _ProblemTextSize {
+  small,
+  medium,
+  large;
+
+  double get fontSize => switch (this) {
+        _ProblemTextSize.small => 22,
+        _ProblemTextSize.medium => 36,
+        _ProblemTextSize.large => 48,
+      };
+
+  String get label => switch (this) {
+        _ProblemTextSize.small => 'Small',
+        _ProblemTextSize.medium => 'Medium',
+        _ProblemTextSize.large => 'Large',
+      };
+
+  String get storageValue => name;
+
+  static _ProblemTextSize fromStorage(String? value) => switch (value) {
+        'small' => _ProblemTextSize.small,
+        'large' => _ProblemTextSize.large,
+        _ => _ProblemTextSize.medium,
+      };
+}
+
 class _ProblemStatementSlide extends StatefulWidget {
   final String text;
   final bool isPresenter;
+  final _ProblemTextSize textSize;
+  final void Function(_ProblemTextSize) onTextSizeChanged;
   final void Function(String) onChanged;
 
   const _ProblemStatementSlide({
     required this.text,
     required this.isPresenter,
+    required this.textSize,
+    required this.onTextSizeChanged,
     required this.onChanged,
   });
 
@@ -2856,6 +3026,7 @@ class _ProblemStatementSlide extends StatefulWidget {
 
 class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
   late final _ProblemTextController _ctrl;
+  final UndoHistoryController _undoController = UndoHistoryController();
 
   @override
   void initState() {
@@ -2877,6 +3048,7 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
   @override
   void dispose() {
     _ctrl.dispose();
+    _undoController.dispose();
     super.dispose();
   }
 
@@ -2925,25 +3097,30 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                if (widget.isPresenter) ...[
-                  _ProblemToolbar(ctrl: _ctrl, onChanged: widget.onChanged),
-                  const SizedBox(height: 8),
-                ],
+                _ProblemToolbar(
+                  ctrl: _ctrl,
+                  onChanged: widget.onChanged,
+                  showFormatting: widget.isPresenter,
+                  textSize: widget.textSize,
+                  onTextSizeChanged: widget.onTextSizeChanged,
+                ),
+                const SizedBox(height: 8),
                 Expanded(
                   child: widget.isPresenter
                       ? TextField(
                           controller: _ctrl,
+                          undoController: _undoController,
                           maxLines: null,
                           expands: true,
                           textAlignVertical: TextAlignVertical.top,
                           style: TextStyle(
-                              fontSize: 36, height: 1.6, color: cs.onSurface),
+                              fontSize: widget.textSize.fontSize, height: 1.6, color: cs.onSurface),
                           decoration: InputDecoration(
                             hintText:
                                 'Describe the problem you\'re trying to solve…',
                             hintStyle: TextStyle(
                                 color: cs.onSurfaceVariant.withValues(alpha: 0.5),
-                                fontSize: 36),
+                                fontSize: widget.textSize.fontSize),
                             filled: true,
                             fillColor: cs.surface,
                             border: OutlineInputBorder(
@@ -2964,21 +3141,26 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
                         )
                       : Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
                             color: cs.surface,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: cs.outline),
                           ),
-                          child: widget.text.isEmpty
-                              ? Text(
-                                  'No problem statement defined yet.',
-                                  style: TextStyle(
-                                      fontSize: 36,
-                                      color: cs.onSurfaceVariant.withValues(alpha: 0.5),
-                                      fontStyle: FontStyle.italic),
-                                )
-                              : _ProblemRichText(text: widget.text),
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(20),
+                            child: widget.text.isEmpty
+                                ? Text(
+                                    'No problem statement defined yet.',
+                                    style: TextStyle(
+                                        fontSize: widget.textSize.fontSize,
+                                        color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                                        fontStyle: FontStyle.italic),
+                                  )
+                                : _ProblemRichText(
+                                    text: widget.text,
+                                    fontSize: widget.textSize.fontSize,
+                                  ),
+                          ),
                         ),
                 ),
               ],
