@@ -79,7 +79,9 @@ REST endpoints use `Authorization: Bearer <token>` header. The `userID` claim is
 
 ```bash
 cd frontend
-flutter run -d chrome
+flutter run -d chrome --web-port=5000
+# or
+make run-dev
 ```
 
 `ApiService.baseUrl` is hardcoded to `http://localhost:8080/api` and `wsBaseUrl` to `ws://localhost:8080` in `lib/services/api_service.dart`.

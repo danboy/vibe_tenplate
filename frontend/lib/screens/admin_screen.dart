@@ -270,6 +270,20 @@ class _TeamsSectionState extends State<_TeamsSection> {
   }
 }
 
+class _DeleteIconButton extends StatelessWidget {
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  const _DeleteIconButton({required this.tooltip, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+        icon: const Icon(Icons.delete_outline),
+        tooltip: tooltip,
+        onPressed: onPressed,
+      );
+}
+
 class _TeamPlanTile extends StatelessWidget {
   final Team team;
   final ValueChanged<String> onPlanChanged;
@@ -326,11 +340,7 @@ class _TeamPlanTile extends StatelessWidget {
                 if (val != null && val != team.plan) onPlanChanged(val);
               },
             ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline),
-              tooltip: 'Delete team',
-              onPressed: onDelete,
-            ),
+            _DeleteIconButton(tooltip: 'Delete team', onPressed: onDelete),
           ],
         ),
       ),
@@ -372,11 +382,7 @@ class _UserTile extends StatelessWidget {
           ],
         ),
         subtitle: Text(user.email),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline),
-          tooltip: 'Delete user',
-          onPressed: onDelete,
-        ),
+        trailing: _DeleteIconButton(tooltip: 'Delete user', onPressed: onDelete),
       ),
     );
   }
@@ -400,11 +406,7 @@ class _GroupTile extends StatelessWidget {
               ? '${group.teamName} · ${group.memberCount} members · owner: ${group.ownerUsername}'
               : '${group.memberCount} members · owner: ${group.ownerUsername}',
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline),
-          tooltip: 'Delete group',
-          onPressed: onDelete,
-        ),
+        trailing: _DeleteIconButton(tooltip: 'Delete group', onPressed: onDelete),
       ),
     );
   }
@@ -429,11 +431,7 @@ class _ActivityTile extends StatelessWidget {
           ' · ${activity.type}'
           '${activity.creatorUsername.isNotEmpty ? ' · by ${activity.creatorUsername}' : ''}',
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline),
-          tooltip: 'Delete activity',
-          onPressed: onDelete,
-        ),
+        trailing: _DeleteIconButton(tooltip: 'Delete activity', onPressed: onDelete),
       ),
     );
   }

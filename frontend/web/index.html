@@ -31,8 +31,41 @@
 
   <title>tenplate</title>
   <link rel="manifest" href="manifest.json">
+
+  <style>
+    html, body {
+      background: #EEF0F4;
+      margin: 0;
+    }
+    #loading-spinner {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #loading-spinner::after {
+      content: '';
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 3px solid #DDE1EA;
+      border-top-color: #008080;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
+  <div id="loading-spinner"></div>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var el = document.getElementById('loading-spinner');
+      if (el) el.remove();
+    });
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

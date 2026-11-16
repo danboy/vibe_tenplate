@@ -171,14 +171,11 @@ func (h *AdminHandler) ListBrainstorms(c *gin.Context) {
 		return
 	}
 
-	groupIDs := make([]string, 0, len(brainstorms))
-	seen := map[string]bool{}
-	for _, b := range brainstorms {
-		if !seen[b.GroupID] {
-			seen[b.GroupID] = true
-			groupIDs = append(groupIDs, b.GroupID)
-		}
+	rawGroupIDs := make([]string, len(brainstorms))
+	for i, b := range brainstorms {
+		rawGroupIDs[i] = b.GroupID
 	}
+	groupIDs := uniqueNonEmptyIDs(rawGroupIDs)
 	var groups []models.Group
 	if len(groupIDs) > 0 {
 		h.db.Preload("Team").Where("id IN ?", groupIDs).Find(&groups)
@@ -214,6 +211,21 @@ func (h *AdminHandler) ListBrainstorms(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// uniqueNonEmptyIDs returns the distinct, non-empty values in ids, in first-
+// seen order — for batching a lookup query over a loose foreign-key column
+// collected from a list of rows.
+func uniqueNonEmptyIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // deleteBrainstormDescendants deletes every row that references a set of
@@ -288,14 +300,11 @@ func (h *AdminHandler) ListGroups(c *gin.Context) {
 		return
 	}
 
-	ownerIDs := make([]string, 0, len(groups))
-	seen := map[string]bool{}
-	for _, g := range groups {
-		if g.OwnerID != "" && !seen[g.OwnerID] {
-			seen[g.OwnerID] = true
-			ownerIDs = append(ownerIDs, g.OwnerID)
-		}
+	rawOwnerIDs := make([]string, len(groups))
+	for i, g := range groups {
+		rawOwnerIDs[i] = g.OwnerID
 	}
+	ownerIDs := uniqueNonEmptyIDs(rawOwnerIDs)
 	var owners []models.User
 	if len(ownerIDs) > 0 {
 		h.db.Select("id", "username").Where("id IN ?", ownerIDs).Find(&owners)

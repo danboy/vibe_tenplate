@@ -41,14 +41,20 @@ type Hub struct {
 	matrixMu     sync.Mutex        // protects matrixLocks
 	clientCount  atomic.Int32
 
-	// Countdown timer for the first retro step. durationSeconds is the
-	// configured length (0 if the timer isn't enabled for this brainstorm);
-	// endsAt is only meaningful while running, remainingSeconds only while
-	// paused/reset.
-	timerMu              sync.Mutex
-	timerDurationSeconds int
-	timerRunning         bool
-	timerEndsAt          time.Time
+	// blurNotes, when set by the presenter, hides other participants' sticky
+	// note contents on the brainstorm step until toggled off. Ephemeral —
+	// resets with the hub, same as the matrix locks and timer state.
+	blurMu    sync.Mutex
+	blurNotes bool
+
+	// Countdown timer for the first retro step. The configured duration is
+	// never cached here — every call site already has (or cheaply fetches)
+	// the current Brainstorm row, so duration is read from the DB each time
+	// instead of risking a second, manually-synced source of truth. endsAt
+	// is only meaningful while running, remainingSeconds only while paused.
+	timerMu               sync.Mutex
+	timerRunning          bool
+	timerEndsAt           time.Time
 	timerRemainingSeconds int
 }
 
@@ -66,13 +72,13 @@ func newHub(brainstormID string, db *gorm.DB) *Hub {
 	// Brainstorms with the problem statement stage disabled (e.g. card
 	// sorting) should start on the first enabled slide, not slide 0.
 	var brainstorm models.Brainstorm
-	if err := db.First(&brainstorm, "id = ?", brainstormID).Error; err == nil {
+	if err := db.Select("enable_problem", "timer_enabled", "timer_minutes").
+		First(&brainstorm, "id = ?", brainstormID).Error; err == nil {
 		if !brainstorm.EnableProblem {
 			h.currentSlide = 1
 		}
 		if brainstorm.TimerEnabled {
-			h.timerDurationSeconds = brainstorm.TimerMinutes * 60
-			h.timerRemainingSeconds = h.timerDurationSeconds
+			h.timerRemainingSeconds = brainstorm.TimerMinutes * 60
 		}
 	}
 
@@ -151,13 +157,18 @@ func (h *Hub) sendInit(client *Client) {
 	slide := h.currentSlide
 	h.mu.Unlock()
 
+	h.blurMu.Lock()
+	blurNotes := h.blurNotes
+	h.blurMu.Unlock()
+
 	data, err := buildMessage("init", map[string]any{
 		"notes":              notes,
 		"slide":              slide,
 		"votes":              votes,
 		"action_items":       actionItems,
 		"problem_statement":  brainstorm.ProblemStatement,
-		"timer":              h.timerSnapshot(),
+		"timer":              h.timerSnapshot(timerDuration(&brainstorm)),
+		"blur_notes":         blurNotes,
 	})
 	if err != nil {
 		log.Println("ws: sendInit build error:", err)
@@ -181,9 +192,20 @@ func isAuthorizedPresenter(brainstorm *models.Brainstorm, userID string) bool {
 	return brainstorm.CreatedBy == userID
 }
 
+// timerDuration returns the configured timer length in seconds for a
+// brainstorm row (0 if the timer isn't enabled). Call sites already have —
+// or cheaply fetch — the row for an authorization check, so this just reads
+// off it rather than trusting a cached copy that could drift out of sync.
+func timerDuration(brainstorm *models.Brainstorm) int {
+	if !brainstorm.TimerEnabled {
+		return 0
+	}
+	return brainstorm.TimerMinutes * 60
+}
+
 // timerSnapshot returns the current timer state for sending to clients.
 // Must be safe to call from any goroutine.
-func (h *Hub) timerSnapshot() map[string]any {
+func (h *Hub) timerSnapshot(durationSeconds int) map[string]any {
 	h.timerMu.Lock()
 	defer h.timerMu.Unlock()
 	var endsAt *time.Time
@@ -191,7 +213,7 @@ func (h *Hub) timerSnapshot() map[string]any {
 		endsAt = &h.timerEndsAt
 	}
 	return map[string]any{
-		"duration_seconds":  h.timerDurationSeconds,
+		"duration_seconds":  durationSeconds,
 		"running":           h.timerRunning,
 		"ends_at":           endsAt,
 		"remaining_seconds": h.timerRemainingSeconds,
@@ -213,7 +235,7 @@ func (h *Hub) pauseTimerLocked() {
 // pauseTimer pauses the timer if it's running and returns the resulting
 // snapshot plus whether it actually changed anything (so callers can skip
 // broadcasting a no-op). Safe to call from any goroutine.
-func (h *Hub) pauseTimer() (map[string]any, bool) {
+func (h *Hub) pauseTimer(durationSeconds int) (map[string]any, bool) {
 	h.timerMu.Lock()
 	wasRunning := h.timerRunning
 	h.pauseTimerLocked()
@@ -221,7 +243,7 @@ func (h *Hub) pauseTimer() (map[string]any, bool) {
 	if !wasRunning {
 		return nil, false
 	}
-	return h.timerSnapshot(), true
+	return h.timerSnapshot(durationSeconds), true
 }
 
 // handleMessage processes an inbound message from a client.
@@ -461,7 +483,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 		// Leaving the retro board (slide 1) pauses the timer — it's only
 		// meant to be running while everyone's looking at it.
 		if brainstorm.Type == "retro" && p.Slide != 1 {
-			if snapshot, paused := h.pauseTimer(); paused {
+			if snapshot, paused := h.pauseTimer(timerDuration(&brainstorm)); paused {
 				if data, err := buildMessage("timer_update", snapshot); err == nil {
 					h.broadcast <- data
 				}
@@ -470,14 +492,16 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 
 	case "timer_start", "timer_pause", "timer_reset":
 		var brainstorm models.Brainstorm
-		if h.db.Where("id = ?", h.brainstormID).First(&brainstorm).Error != nil {
+		if h.db.Select("id", "created_by", "presenter_id", "timer_enabled", "timer_minutes").
+			Where("id = ?", h.brainstormID).First(&brainstorm).Error != nil {
 			return
 		}
 		if !isAuthorizedPresenter(&brainstorm, client.userID) {
 			return
 		}
+		duration := timerDuration(&brainstorm)
 		h.timerMu.Lock()
-		if h.timerDurationSeconds == 0 {
+		if duration == 0 {
 			// Timer isn't enabled for this brainstorm — nothing to control.
 			h.timerMu.Unlock()
 			return
@@ -492,10 +516,31 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			h.pauseTimerLocked()
 		case "timer_reset":
 			h.timerRunning = false
-			h.timerRemainingSeconds = h.timerDurationSeconds
+			h.timerRemainingSeconds = duration
 		}
 		h.timerMu.Unlock()
-		if data, err := buildMessage("timer_update", h.timerSnapshot()); err == nil {
+		if data, err := buildMessage("timer_update", h.timerSnapshot(duration)); err == nil {
+			h.broadcast <- data
+		}
+
+	case "blur_toggle":
+		var p struct {
+			Enabled bool `json:"enabled"`
+		}
+		if json.Unmarshal(msg.Payload, &p) != nil {
+			return
+		}
+		var brainstorm models.Brainstorm
+		if h.db.Where("id = ?", h.brainstormID).First(&brainstorm).Error != nil {
+			return
+		}
+		if !isAuthorizedPresenter(&brainstorm, client.userID) {
+			return
+		}
+		h.blurMu.Lock()
+		h.blurNotes = p.Enabled
+		h.blurMu.Unlock()
+		if data, err := buildMessage("blur_update", map[string]any{"enabled": p.Enabled}); err == nil {
 			h.broadcast <- data
 		}
 
@@ -692,6 +737,16 @@ func GetHub(brainstormID string, db *gorm.DB) *Hub {
 	return h
 }
 
+// getHub returns the already-running hub for a brainstorm, if any, without
+// creating one — for notifying an existing session, as opposed to GetHub's
+// create-on-demand for a client that's actually connecting.
+func getHub(brainstormID string) (*Hub, bool) {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	h, ok := manager.hubs[brainstormID]
+	return h, ok
+}
+
 // Register enqueues a client to be added to the hub.
 func (h *Hub) Register(client *Client) {
 	h.register <- client
@@ -700,45 +755,39 @@ func (h *Hub) Register(client *Client) {
 // GetClientCount returns the number of active WebSocket connections for a brainstorm.
 // Returns 0 if no hub exists for the brainstorm.
 func GetClientCount(brainstormID string) int {
-	manager.mu.Lock()
-	h, ok := manager.hubs[brainstormID]
-	manager.mu.Unlock()
+	h, ok := getHub(brainstormID)
 	if !ok {
 		return 0
 	}
 	return int(h.clientCount.Load())
 }
 
-// NotifyTimerConfig updates an existing hub's timer config after the brainstorm's
-// settings change (no-op if no hub is running yet — it'll pick up the new config
-// from the DB on creation). Resets to a fresh, paused state at the new duration,
-// matching timer_reset, since a config change mid-countdown has no sensible "resume".
+// NotifyTimerConfig tells an existing hub's connected clients about a timer
+// config change (no-op if no hub is running yet — it'll pick up the new
+// config from the DB on creation). Resets to a fresh, paused state at the
+// new duration, matching timer_reset, since a config change mid-countdown
+// has no sensible "resume".
 func NotifyTimerConfig(brainstormID string, enabled bool, minutes int) {
-	manager.mu.Lock()
-	h, ok := manager.hubs[brainstormID]
-	manager.mu.Unlock()
+	h, ok := getHub(brainstormID)
 	if !ok {
 		return
 	}
-	h.timerMu.Lock()
+	duration := 0
 	if enabled {
-		h.timerDurationSeconds = minutes * 60
-	} else {
-		h.timerDurationSeconds = 0
+		duration = minutes * 60
 	}
+	h.timerMu.Lock()
 	h.timerRunning = false
-	h.timerRemainingSeconds = h.timerDurationSeconds
+	h.timerRemainingSeconds = duration
 	h.timerMu.Unlock()
-	if data, err := buildMessage("timer_update", h.timerSnapshot()); err == nil {
+	if data, err := buildMessage("timer_update", h.timerSnapshot(duration)); err == nil {
 		h.broadcast <- data
 	}
 }
 
 // NotifyPresenter broadcasts a presenter_change message to an existing hub (no-op if none).
 func NotifyPresenter(brainstormID string, presenterID *string, presenterUsername *string) {
-	manager.mu.Lock()
-	h, ok := manager.hubs[brainstormID]
-	manager.mu.Unlock()
+	h, ok := getHub(brainstormID)
 	if !ok {
 		return
 	}

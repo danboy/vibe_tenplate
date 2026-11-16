@@ -56,6 +56,10 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
   Timer? _psDebounce;
   bool _wsInitialized = false;
 
+  // Presenter-controlled blur of other participants' sticky notes during
+  // the brainstorm step. Synced via WS so it applies for every viewer.
+  bool _blurNotes = false;
+
   // Retro step-1 countdown timer. endsAt is only meaningful while running;
   // remainingSeconds holds the paused/reset value otherwise. _timerTicker
   // just forces a rebuild once a second so the displayed countdown moves —
@@ -375,6 +379,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           if (p['timer'] != null) {
             _applyTimerState(p['timer'] as Map<String, dynamic>);
           }
+          _blurNotes = (p['blur_notes'] as bool?) ?? false;
           _wsInitialized = true;
           if (_notes.isNotEmpty && (_slide == 1 || _slide == 2 || _slide == 3)) {
             _centerIfNeeded();
@@ -470,6 +475,9 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
 
         case 'timer_update':
           _applyTimerState(payload as Map<String, dynamic>);
+
+        case 'blur_update':
+          _blurNotes = payload['enabled'] as bool;
       }
     });
   }
@@ -536,6 +544,10 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
       'pos_y': posY,
       'column': column,
     });
+  }
+
+  void _toggleBlurNotes() {
+    _send('blur_toggle', {'enabled': !_blurNotes});
   }
 
   void _ungroupNote(String id) {
@@ -1018,6 +1030,14 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
               tooltip: 'Set presenter',
               onPressed: _showSetPresenterDialog,
             ),
+          if (isPresenter && _slide == 1 && !isRetro)
+            IconButton(
+              icon: Icon(_blurNotes ? Icons.blur_off : Icons.blur_on),
+              tooltip: _blurNotes
+                  ? "Show others' notes"
+                  : "Blur others' notes",
+              onPressed: _toggleBlurNotes,
+            ),
           IconButton(
             icon: const Icon(Icons.info_outline),
             tooltip: 'Activity info',
@@ -1182,7 +1202,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                                     isOwner: canAssign,
                                     isCardSort: _brainstorm?.isCardSort ?? false,
                                     madGladMode: isRetroBoardMode && retroStyle == 'mad_glad',
-                                    blurOthersUnlessOwner: isRetroBoardMode && retroStyle == 'mad_glad',
+                                    blurOthersUnlessOwner: (isRetroBoardMode && retroStyle == 'mad_glad') ||
+                                        (_slide == 1 && !isRetro && _blurNotes),
                                   ),
                                 ),
                               ),

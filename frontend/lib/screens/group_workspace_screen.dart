@@ -206,32 +206,12 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                       value: guestsEnabled,
                       onChanged: (v) => setLocal(() => guestsEnabled = v ?? false),
                     ),
-                    if (type == 'retro') ...[
-                      CheckboxListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Timer'),
-                        subtitle: const Text('Countdown shown during the add-cards step'),
-                        value: timerEnabled,
-                        onChanged: (v) => setLocal(() => timerEnabled = v ?? false),
+                    if (type == 'retro')
+                      _TimerSection(
+                        enabled: timerEnabled,
+                        onChanged: (v) => setLocal(() => timerEnabled = v),
+                        minutesController: timerMinutesCtrl,
                       ),
-                      if (timerEnabled)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 16, bottom: 8),
-                          child: SizedBox(
-                            width: 120,
-                            child: TextFormField(
-                              controller: timerMinutesCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'Minutes',
-                                isDense: true,
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
                     const SizedBox(height: 8),
                     _InterstitialSection(
                       controllers: iCtrl,
@@ -458,32 +438,12 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                       value: guestsEnabled,
                       onChanged: (v) => setLocal(() => guestsEnabled = v ?? false),
                     ),
-                    if (brainstorm.isRetro) ...[
-                      CheckboxListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Timer'),
-                        subtitle: const Text('Countdown shown during the add-cards step'),
-                        value: timerEnabled,
-                        onChanged: (v) => setLocal(() => timerEnabled = v ?? false),
+                    if (brainstorm.isRetro)
+                      _TimerSection(
+                        enabled: timerEnabled,
+                        onChanged: (v) => setLocal(() => timerEnabled = v),
+                        minutesController: timerMinutesCtrl,
                       ),
-                      if (timerEnabled)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 16, bottom: 8),
-                          child: SizedBox(
-                            width: 120,
-                            child: TextFormField(
-                              controller: timerMinutesCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'Minutes',
-                                isDense: true,
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
                     const SizedBox(height: 8),
                     _InterstitialSection(
                       controllers: iCtrl,
@@ -900,6 +860,51 @@ class _ProjectCard extends StatelessWidget {
 
   String _formatDate(DateTime dt) =>
       '${dt.day}/${dt.month}/${dt.year}';
+}
+
+class _TimerSection extends StatelessWidget {
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+  final TextEditingController minutesController;
+
+  const _TimerSection({
+    required this.enabled,
+    required this.onChanged,
+    required this.minutesController,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CheckboxListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Timer'),
+          subtitle: const Text('Countdown shown during the add-cards step'),
+          value: enabled,
+          onChanged: (v) => onChanged(v ?? false),
+        ),
+        if (enabled)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 8),
+            child: SizedBox(
+              width: 120,
+              child: TextFormField(
+                controller: minutesController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Minutes',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _InterstitialControllers {
