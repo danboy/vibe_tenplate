@@ -453,6 +453,20 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			h.broadcast <- data
 		}
 
+	case "matrix_remove":
+		var p struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(msg.Payload, &p) != nil {
+			return
+		}
+		h.db.Model(&models.StickyNote{}).
+			Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).
+			Updates(map[string]any{"matrix_cost": nil, "matrix_value": nil})
+		if data, err := buildMessage("matrix_remove", map[string]any{"id": p.ID}); err == nil {
+			h.broadcast <- data
+		}
+
 	case "slide_change":
 		log.Printf("slide_change: received raw=%s user=%s", string(msg.Payload), client.userID)
 		var p struct {

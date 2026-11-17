@@ -134,6 +134,11 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
     _send('matrix_drag_end', {'id': id});
   }
 
+  void _onMatrixRemove(String id) {
+    setState(() => _matrixPositions.remove(id));
+    _send('matrix_remove', {'id': id});
+  }
+
   void _onGroupDragUpdate(String groupId, double dx, double dy) {
     setState(() {
       final c = _groupDragOffsets[groupId] ?? Offset.zero;
@@ -497,6 +502,9 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
             (payload['value'] as num).toDouble(),
           );
 
+        case 'matrix_remove':
+          _matrixPositions.remove(payload['id'] as String);
+
         case 'slide_change':
           _slide = payload['slide'] as int;
 
@@ -742,6 +750,49 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
             .showSnackBar(SnackBar(content: Text(e.toString())));
       }
     }
+  }
+
+  void _showProblemStatementReference() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.lightbulb_outline, size: 20, color: cs.primary),
+              const SizedBox(width: 8),
+              const Text('Problem Statement'),
+            ],
+          ),
+          content: SizedBox(
+            width: 560,
+            height: 360,
+            child: SingleChildScrollView(
+              child: _problemStatement.isEmpty
+                  ? Text(
+                      'No problem statement defined yet.',
+                      style: TextStyle(
+                        fontSize: _problemTextSize.fontSize,
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                        fontStyle: FontStyle.italic,
+                      ),
+                    )
+                  : _ProblemRichText(
+                      text: _problemStatement,
+                      fontSize: _problemTextSize.fontSize,
+                    ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _centerView() {
@@ -1076,6 +1127,12 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           ],
         ),
         actions: [
+          if (enableProblem && !isProblemMode)
+            IconButton(
+              icon: const Icon(Icons.lightbulb_outline),
+              tooltip: 'View problem statement',
+              onPressed: _showProblemStatementReference,
+            ),
           if (_isGuest)
             IconButton(
               icon: const Icon(Icons.badge_outlined),
@@ -1202,9 +1259,12 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                           positions: _matrixPositions,
                           lockedBy: _matrixLockedBy,
                           currentUserId: currentUserId,
+                          votes: _votes,
+                          voteFilterEnabled: enableVote,
                           onPositionChanged: _onMatrixPositionChanged,
                           onDragStart: _onMatrixDragStart,
                           onDragEnd: _onMatrixDragEnd,
+                          onRemoveFromMatrix: _onMatrixRemove,
                         )
                       : isVotingMode
                           ? ClipRect(
@@ -3179,18 +3239,24 @@ class _CostValueMatrix extends StatefulWidget {
   final Map<String, Offset> positions;
   final Map<String, String> lockedBy;
   final String currentUserId;
+  final Map<String, Map<String, int>> votes;
+  final bool voteFilterEnabled;
   final void Function(String id, Offset normalized) onPositionChanged;
   final void Function(String id) onDragStart;
   final void Function(String id) onDragEnd;
+  final void Function(String id) onRemoveFromMatrix;
 
   const _CostValueMatrix({
     required this.notes,
     required this.positions,
     required this.lockedBy,
     required this.currentUserId,
+    required this.votes,
+    required this.voteFilterEnabled,
     required this.onPositionChanged,
     required this.onDragStart,
     required this.onDragEnd,
+    required this.onRemoveFromMatrix,
   });
 
   @override
@@ -3200,12 +3266,109 @@ class _CostValueMatrix extends StatefulWidget {
 class _CostValueMatrixState extends State<_CostValueMatrix> {
   final _stackKey = GlobalKey();
   double _matrixLeft = 0, _matrixTop = 0, _matrixW = 1, _matrixH = 1;
-  final Map<String, Offset> _grabOffset = {};
+  String? _expandedId;
 
   Offset _posFor(String id) => widget.positions[id] ?? const Offset(0.5, 0.5);
 
   Color _dotColor(StickyNote note) =>
       note.isGroup ? _groupColors(note.id).$2 : _hexColor(note.color);
+
+  Widget _sectionHeader(String label, ColorScheme cs) => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+        child: Text(
+          label,
+          style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: cs.onSurfaceVariant,
+              letterSpacing: 0.8),
+        ),
+      );
+
+  Widget _buildItemRow(
+    StickyNote note, {
+    required bool isMobile,
+    required ColorScheme cs,
+    bool onBoard = false,
+  }) {
+    final color = _dotColor(note);
+    final childCount = note.isGroup
+        ? widget.notes.where((n) => n.parentId == note.id).length
+        : 0;
+    final label = note.content.isEmpty
+        ? (note.isGroup ? 'Untitled group' : '')
+        : note.content;
+    final isExpanded = _expandedId == note.id;
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: note.isGroup ? _groupColors(note.id).$1 : color,
+              border: Border.all(color: color, width: 2),
+            ),
+            child: note.isGroup
+                ? Center(
+                    child: Icon(Icons.hub_outlined, size: 10, color: color))
+                : null,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(fontSize: 12, color: cs.onSurface),
+                  maxLines: isExpanded ? null : 1,
+                  overflow:
+                      isExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                ),
+                if (note.isGroup && childCount > 0)
+                  Text(
+                    '$childCount item${childCount == 1 ? '' : 's'}',
+                    style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                  ),
+              ],
+            ),
+          ),
+          if (onBoard)
+            Icon(Icons.push_pin, size: 13, color: cs.primary),
+        ],
+      ),
+    );
+    return Draggable<String>(
+      key: ValueKey(note.id),
+      data: note.id,
+      feedbackOffset: Offset.zero,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: isMobile ? 140 : 220,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Opacity(opacity: 0.85, child: row),
+        ),
+      ),
+      childWhenDragging: Opacity(opacity: 0.3, child: row),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () =>
+            setState(() => _expandedId = isExpanded ? null : note.id),
+        child: row,
+      ),
+    );
+  }
+
+  int _totalVotesFor(String id) {
+    final m = widget.votes[id];
+    if (m == null) return 0;
+    return m.values.fold(0, (a, b) => a + b);
+  }
 
   Offset _globalToNormalized(Offset globalPos) {
     final box = _stackKey.currentContext?.findRenderObject() as RenderBox?;
@@ -3219,7 +3382,10 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
 
   @override
   Widget build(BuildContext context) {
-    final items = widget.notes.where((n) => n.isGroup || n.parentId == null).toList();
+    var items = widget.notes.where((n) => n.isGroup || n.parentId == null).toList();
+    if (widget.voteFilterEnabled) {
+      items = items.where((n) => _totalVotesFor(n.id) > 0).toList();
+    }
 
     if (items.isEmpty) {
       final cs = Theme.of(context).colorScheme;
@@ -3229,15 +3395,26 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
           children: [
             Icon(Icons.grid_view_outlined, size: 72, color: cs.onSurfaceVariant),
             const SizedBox(height: 16),
-            Text('No notes yet',
+            Text(
+                widget.voteFilterEnabled
+                    ? 'No items have votes yet'
+                    : 'No notes yet',
                 style: TextStyle(fontSize: 20, color: cs.onSurfaceVariant)),
             const SizedBox(height: 8),
-            Text('Add notes in the Brainstorm slide first',
+            Text(
+                widget.voteFilterEnabled
+                    ? 'Vote on notes in the Voting slide first'
+                    : 'Add notes in the Brainstorm slide first',
                 style: TextStyle(color: cs.onSurfaceVariant)),
           ],
         ),
       );
     }
+
+    final unplaced =
+        items.where((n) => !widget.positions.containsKey(n.id)).toList();
+    final placed =
+        items.where((n) => widget.positions.containsKey(n.id)).toList();
 
     final isMobile = MediaQuery.of(context).size.width < 600;
 
@@ -3246,90 +3423,46 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // ── Left list ──────────────────────────────────────────────────────
-        if (!isMobile) Container(
-          width: 220,
+        DragTarget<String>(
+          onAcceptWithDetails: (details) =>
+              widget.onRemoveFromMatrix(details.data),
+          builder: (context, candidateData, rejectedData) => Container(
+          width: isMobile ? 140 : 220,
           decoration: BoxDecoration(
-            color: cs.surface,
+            color: candidateData.isNotEmpty
+                ? cs.primary.withValues(alpha: 0.08)
+                : cs.surface,
             border: Border(right: BorderSide(color: cs.outline)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
-                child: Text(
-                  'ITEMS',
-                  style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSurfaceVariant,
-                      letterSpacing: 0.8),
-                ),
-              ),
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                  children: items.map((note) {
-                    final color = _dotColor(note);
-                    final childCount = note.isGroup
-                        ? widget.notes.where((n) => n.parentId == note.id).length
-                        : 0;
-                    final label = note.content.isEmpty
-                        ? (note.isGroup ? 'Untitled group' : '')
-                        : note.content;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 22,
-                            height: 22,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: note.isGroup
-                                  ? _groupColors(note.id).$1
-                                  : color,
-                              border: Border.all(color: color, width: 2),
-                            ),
-                            child: note.isGroup
-                                ? Center(
-                                    child: Icon(Icons.hub_outlined,
-                                        size: 10, color: color))
-                                : null,
-                          ),
-                          const SizedBox(width: 9),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  label,
-                                  style: TextStyle(
-                                      fontSize: 12, color: cs.onSurface),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                if (note.isGroup && childCount > 0)
-                                  Text(
-                                    '$childCount item${childCount == 1 ? '' : 's'}',
-                                    style: TextStyle(
-                                        fontSize: 10, color: cs.onSurfaceVariant),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                  children: [
+                    if (placed.isNotEmpty) _sectionHeader('ON BOARD', cs),
+                    ...placed.map((note) => _buildItemRow(note,
+                        isMobile: isMobile, cs: cs, onBoard: true)),
+                    _sectionHeader('ITEMS', cs),
+                    ...unplaced.map(
+                        (note) => _buildItemRow(note, isMobile: isMobile, cs: cs)),
+                  ],
                 ),
               ),
             ],
           ),
+          ),
         ),
         // ── Matrix area ────────────────────────────────────────────────────
         Expanded(
-          child: LayoutBuilder(builder: (context, constraints) {
+          child: DragTarget<String>(
+            onAcceptWithDetails: (details) {
+              final normalized = _globalToNormalized(details.offset);
+              widget.onPositionChanged(details.data, normalized);
+            },
+            builder: (context, candidateData, rejectedData) =>
+                LayoutBuilder(builder: (context, constraints) {
             const leftPad = 40.0;
             const bottomPad = 40.0;
             const outerPad = 16.0;
@@ -3449,7 +3582,7 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
                     Icons.do_not_disturb_outlined, const Color(0xFFC62828)),
               ),
               // Circles
-              ...items.map((note) {
+              ...placed.map((note) {
                 final pos = toScreen(_posFor(note.id));
                 final color = _dotColor(note);
                 const r = 18.0;
@@ -3460,86 +3593,67 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
                 final lockedByOther = widget.lockedBy.containsKey(note.id) &&
                     widget.lockedBy[note.id] != widget.currentUserId;
 
+                final dotContent = Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: r * 2,
+                      height: r * 2,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: color,
+                        boxShadow: const [
+                          BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 4,
+                              offset: Offset(0, 2))
+                        ],
+                      ),
+                      child: Center(
+                        child: note.isGroup
+                            ? Icon(Icons.hub_outlined,
+                                size: 14, color: iconColor)
+                            : Icon(Icons.sticky_note_2_outlined,
+                                size: 13, color: iconColor),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    SizedBox(
+                      width: 72,
+                      child: Text(
+                        note.content.isEmpty ? '—' : note.content,
+                        style:
+                            TextStyle(fontSize: 9, color: cs.onSurfaceVariant),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                );
+
                 return Positioned(
                   left: pos.dx - r,
                   top: pos.dy - r - 10,
                   child: Opacity(
                     opacity: lockedByOther ? 0.35 : 1.0,
-                    child: GestureDetector(
-                      onPanStart: lockedByOther
-                          ? null
-                          : (d) {
-                              final ptrNorm =
-                                  _globalToNormalized(d.globalPosition);
-                              _grabOffset[note.id] =
-                                  ptrNorm - _posFor(note.id);
-                              widget.onDragStart(note.id);
-                            },
-                      onPanUpdate: lockedByOther
-                          ? null
-                          : (d) {
-                              final ptrNorm =
-                                  _globalToNormalized(d.globalPosition);
-                              final grab =
-                                  _grabOffset[note.id] ?? Offset.zero;
-                              widget.onPositionChanged(
-                                note.id,
-                                Offset(
-                                  (ptrNorm.dx - grab.dx).clamp(0.0, 1.0),
-                                  (ptrNorm.dy - grab.dy).clamp(0.0, 1.0),
-                                ),
-                              );
-                            },
-                      onPanEnd: lockedByOther
-                          ? null
-                          : (_) {
-                              _grabOffset.remove(note.id);
-                              widget.onDragEnd(note.id);
-                            },
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: r * 2,
-                            height: r * 2,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: color,
-                              boxShadow: const [
-                                BoxShadow(
-                                    color: Colors.black26,
-                                    blurRadius: 4,
-                                    offset: Offset(0, 2))
-                              ],
-                            ),
-                            child: Center(
-                              child: note.isGroup
-                                  ? Icon(Icons.hub_outlined,
-                                      size: 14, color: iconColor)
-                                  : Icon(Icons.sticky_note_2_outlined,
-                                      size: 13, color: iconColor),
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          SizedBox(
-                            width: 72,
-                            child: Text(
-                              note.content.isEmpty ? '—' : note.content,
-                              style: TextStyle(
-                                  fontSize: 9, color: cs.onSurfaceVariant),
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
+                    child: Draggable<String>(
+                      data: note.id,
+                      maxSimultaneousDrags: lockedByOther ? 0 : 1,
+                      feedbackOffset: Offset.zero,
+                      onDragStarted: () => widget.onDragStart(note.id),
+                      onDragEnd: (_) => widget.onDragEnd(note.id),
+                      feedback: Opacity(opacity: 0.85, child: dotContent),
+                      childWhenDragging:
+                          Opacity(opacity: 0.3, child: dotContent),
+                      child: dotContent,
                     ),
                   ),
                 );
               }),
             ]);
-          }),
+            }),
+          ),
         ),
       ],
     );
