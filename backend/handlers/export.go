@@ -268,6 +268,7 @@ func bucketFor(cost, value float64) matrixBucket {
 type exportDataRow struct {
 	ID          string  `json:"id"`
 	Content     string  `json:"content"`
+	Author      string  `json:"author"`
 	Group       string  `json:"group"`
 	MatrixCost  float64 `json:"matrix_cost"`
 	MatrixValue float64 `json:"matrix_value"`
@@ -343,6 +344,7 @@ func (h *ExportHandler) ExportData(c *gin.Context) {
 			row: exportDataRow{
 				ID:          n.ID,
 				Content:     n.Content,
+				Author:      n.Author,
 				Group:       group,
 				MatrixCost:  cost,
 				MatrixValue: value,
@@ -371,11 +373,12 @@ func (h *ExportHandler) ExportData(c *gin.Context) {
 	case "csv":
 		var buf bytes.Buffer
 		w := csv.NewWriter(&buf)
-		_ = w.Write([]string{"id", "content", "group", "matrix_cost", "matrix_value", "bucket", "votes"})
+		_ = w.Write([]string{"id", "content", "author", "group", "matrix_cost", "matrix_value", "bucket", "votes"})
 		for _, r := range rows {
 			_ = w.Write([]string{
 				r.ID,
 				r.Content,
+				r.Author,
 				r.Group,
 				strconv.FormatFloat(r.MatrixCost, 'f', -1, 64),
 				strconv.FormatFloat(r.MatrixValue, 'f', -1, 64),
