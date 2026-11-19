@@ -93,12 +93,14 @@ func (h *Hub) run() {
 			h.clients[client] = true
 			h.clientCount.Add(1)
 			h.sendInit(client)
+			h.broadcastPresence()
 
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				h.clientCount.Add(-1)
 				close(client.send)
+				h.broadcastPresence()
 				// Release any matrix locks held by this client.
 				h.matrixMu.Lock()
 				var released []string
@@ -169,6 +171,7 @@ func (h *Hub) sendInit(client *Client) {
 		"problem_statement":  brainstorm.ProblemStatement,
 		"timer":              h.timerSnapshot(timerDuration(&brainstorm)),
 		"blur_notes":         blurNotes,
+		"connected_count":    int(h.clientCount.Load()),
 	})
 	if err != nil {
 		log.Println("ws: sendInit build error:", err)
@@ -180,6 +183,17 @@ func (h *Hub) sendInit(client *Client) {
 		delete(h.clients, client)
 		close(client.send)
 	}
+}
+
+// broadcastPresence tells connected clients how many are currently connected.
+// Must be called from the run() goroutine so clientCount is read consistently
+// with the register/unregister event that triggered it.
+func (h *Hub) broadcastPresence() {
+	data, err := buildMessage("presence", map[string]any{"count": int(h.clientCount.Load())})
+	if err != nil {
+		return
+	}
+	h.broadcast <- data
 }
 
 // isAuthorizedPresenter reports whether userID may drive presenter-only
@@ -344,10 +358,24 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 		if json.Unmarshal(msg.Payload, &p) != nil {
 			return
 		}
+		// Deleting a group note must not orphan its children — clear their
+		// parent_id first so they fall back to ungrouped instead of being
+		// left pointing at a group that no longer exists.
+		var children []models.StickyNote
+		h.db.Where("parent_id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).Find(&children)
+		for _, child := range children {
+			h.db.Model(&models.StickyNote{}).
+				Where("id = ? AND brainstorm_id = ?", child.ID, h.brainstormID).
+				Update("parent_id", gorm.Expr("NULL"))
+			if data, err := buildMessage("note_group", map[string]any{"id": child.ID, "parent_id": nil}); err == nil {
+				h.broadcast <- data
+			}
+		}
 		h.db.Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).Delete(&models.StickyNote{})
 		if data, err := buildMessage("note_delete", p); err == nil {
 			h.broadcast <- data
 		}
+		h.clearVotes(p.ID)
 
 	case "action_item_create":
 		var p struct {
@@ -609,6 +637,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			if data, err := buildMessage("note_group", map[string]any{"id": p.TargetID, "parent_id": parentID}); err == nil {
 				h.broadcast <- data
 			}
+			h.clearVotes(p.TargetID)
 		}
 
 		// Make dragged note a child.
@@ -618,7 +647,69 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 		if data, err := buildMessage("note_group", map[string]any{"id": p.DraggedID, "parent_id": parentID}); err == nil {
 			h.broadcast <- data
 		}
+		h.clearVotes(p.DraggedID)
 		h.restackGroup(parentID)
+
+	case "note_group_new":
+		// Dragged note is pulled onto open board space (not onto an existing
+		// group) — it gets a brand-new group of its own rather than merging
+		// into whatever happens to be nearby.
+		var p struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(msg.Payload, &p) != nil {
+			return
+		}
+		var dragged models.StickyNote
+		if h.db.Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).First(&dragged).Error != nil {
+			return
+		}
+		if dragged.IsGroup {
+			return
+		}
+		oldParentID := dragged.ParentID
+
+		groupNote := models.StickyNote{
+			BrainstormID: h.brainstormID,
+			Content:      "",
+			PosX:         dragged.PosX,
+			PosY:         dragged.PosY - 110,
+			Color:        "#FFFFFF",
+			CreatedBy:    client.userID,
+			Author:       client.username,
+			IsGroup:      true,
+		}
+		if err := h.db.Create(&groupNote).Error; err != nil {
+			return
+		}
+		if data, err := buildMessage("note_create", groupNote); err == nil {
+			h.broadcast <- data
+		}
+		h.db.Model(&models.StickyNote{}).
+			Where("id = ? AND brainstorm_id = ?", p.ID, h.brainstormID).
+			Update("parent_id", groupNote.ID)
+		if data, err := buildMessage("note_group", map[string]any{"id": p.ID, "parent_id": groupNote.ID}); err == nil {
+			h.broadcast <- data
+		}
+		h.clearVotes(p.ID)
+
+		// If that was the dragged note's only remaining link to its old
+		// group, the old group is now empty — clean it up same as ungroup.
+		if oldParentID != nil {
+			var remaining int64
+			h.db.Model(&models.StickyNote{}).
+				Where("parent_id = ? AND brainstorm_id = ?", *oldParentID, h.brainstormID).
+				Count(&remaining)
+			if remaining == 0 {
+				h.db.Where("id = ? AND brainstorm_id = ?", *oldParentID, h.brainstormID).Delete(&models.StickyNote{})
+				if data, err := buildMessage("note_delete", map[string]any{"id": *oldParentID}); err == nil {
+					h.broadcast <- data
+				}
+				h.clearVotes(*oldParentID)
+			} else {
+				h.restackGroup(*oldParentID)
+			}
+		}
 
 	case "note_ungroup":
 		var p struct {
@@ -651,6 +742,7 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 			if data, err := buildMessage("note_delete", map[string]any{"id": parentID}); err == nil {
 				h.broadcast <- data
 			}
+			h.clearVotes(parentID)
 		} else {
 			h.restackGroup(parentID)
 		}
@@ -699,6 +791,25 @@ func (h *Hub) handleMessage(client *Client, raw []byte) {
 		}); err == nil {
 			h.broadcast <- data
 		}
+	}
+}
+
+// clearVotes deletes any votes cast on noteID and tells clients to drop them
+// locally too. Call whenever a note stops being independently votable — it
+// joins a group, or it (or a group it is) gets deleted — so the stars it
+// was holding go back to each voter's pool instead of being stuck forever.
+func (h *Hub) clearVotes(noteID string) {
+	var count int64
+	h.db.Model(&models.NoteVote{}).
+		Where("note_id = ? AND brainstorm_id = ?", noteID, h.brainstormID).
+		Count(&count)
+	if count == 0 {
+		return
+	}
+	h.db.Where("note_id = ? AND brainstorm_id = ?", noteID, h.brainstormID).
+		Delete(&models.NoteVote{})
+	if data, err := buildMessage("votes_cleared", map[string]any{"note_id": noteID}); err == nil {
+		h.broadcast <- data
 	}
 }
 

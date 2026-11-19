@@ -132,6 +132,7 @@ func main() {
 			protected.PUT("/groups/:id/brainstorms/:bid/presenter", brainstormHandler.SetPresenter)
 			protected.POST("/groups/:id/brainstorms/:bid/export", exportHandler.Export)
 			protected.GET("/groups/:id/brainstorms/:bid/export", exportHandler.ListExportRuns)
+			protected.GET("/groups/:id/brainstorms/:bid/export/data", exportHandler.ExportData)
 			protected.GET("/groups/:id/integrations", integrationHandler.ListIntegrationsForGroup)
 
 			// Admin routes

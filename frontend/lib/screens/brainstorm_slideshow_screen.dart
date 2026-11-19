@@ -37,6 +37,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
   List<StickyNote> _notes = [];
   List<ActionItem> _actionItems = [];
   bool _connected = false;
+  int _connectedCount = 0;
   final _rng = Random();
   Brainstorm? _brainstorm;
   Group? _group;
@@ -445,6 +446,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
             _applyTimerState(p['timer'] as Map<String, dynamic>);
           }
           _blurNotes = (p['blur_notes'] as bool?) ?? false;
+          _connectedCount = (p['connected_count'] as int?) ?? 1;
           _wsInitialized = true;
           if (_notes.isNotEmpty && (_slide == 1 || _slide == 2 || _slide == 3)) {
             _centerIfNeeded();
@@ -488,6 +490,9 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                 : _notes[idx].copyWith(parentId: parentId);
           }
 
+        case 'presence':
+          _connectedCount = (payload['count'] as num).toInt();
+
         case 'matrix_drag_start':
           _matrixLockedBy[payload['id'] as String] =
               payload['user_id'] as String;
@@ -525,6 +530,12 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           final userId = payload['user_id'] as String;
           final count = payload['count'] as int;
           _votes.putIfAbsent(noteId, () => {})[userId] = count;
+
+        case 'votes_cleared':
+          // The note stopped being independently votable (it joined a
+          // group, or it/its group got deleted) — release those stars
+          // back to whoever had placed them.
+          _votes.remove(payload['note_id'] as String);
 
         case 'action_item_create':
           _actionItems
@@ -634,6 +645,10 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
     _send('note_group', {'dragged_id': draggedId, 'target_id': targetId});
   }
 
+  void _createGroupFromNote(String draggedId) {
+    _send('note_group_new', {'id': draggedId});
+  }
+
   void _createActionItem(String content) {
     final author = context.read<AuthProvider>().user?.username ?? '';
     _send('action_item_create', {'content': content, 'author': author});
@@ -645,11 +660,6 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
 
   void _deleteActionItem(String id) {
     _send('action_item_delete', {'id': id});
-  }
-
-  int _myVotesUsed() {
-    final userId = _myUserId;
-    return _votes.values.fold(0, (sum, m) => sum + (m[userId] ?? 0));
   }
 
   void _setVote(String noteId, int count) {
@@ -1174,6 +1184,23 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
             tooltip: 'Center view',
             onPressed: _centerView,
           ),
+          if (_connected)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Tooltip(
+                message: _connectedCount == 1
+                    ? '1 person connected'
+                    : '$_connectedCount people connected',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.people_outline, size: 18),
+                    const SizedBox(width: 4),
+                    Text('$_connectedCount'),
+                  ],
+                ),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: Tooltip(
@@ -1211,12 +1238,11 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
             enabled: isPresenter,
             enabledSlides: enabledSlides,
             onSlideChanged: _changeSlide,
-            labels: isRetro
-                ? _retroSlideLabels(retroStyle)
-                : (_brainstorm?.isCardSort ?? false)
-                    ? _cardSortSlideLabels
-                    : _slideLabels,
-            icons: isRetro ? _retroSlideIconsBase : _slideIcons,
+            slides: _slidesFor(
+              isCardSort: _brainstorm?.isCardSort ?? false,
+              isRetro: isRetro,
+              retroStyle: retroStyle,
+            ),
           ),
           if (isRetroBoardMode && _timerDurationSeconds > 0)
             _RetroTimerBar(
@@ -1267,30 +1293,11 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                           onRemoveFromMatrix: _onMatrixRemove,
                         )
                       : isVotingMode
-                          ? ClipRect(
-                              child: Listener(
-                                onPointerSignal: _onPointerSignal,
-                                child: GestureDetector(
-                                  onScaleStart: _onScaleStart,
-                                  onScaleUpdate: _onScaleUpdate,
-                                  child: _VoteCanvas(
-                                    notes: _notes,
-                                    votes: _votes,
-                                    currentUserId: currentUserId,
-                                    starsLeft: 4 - _myVotesUsed(),
-                                    offset: _offset,
-                                    scale: _scale,
-                                    onVoteDelta: (noteId, delta) {
-                                      final userId = currentUserId;
-                                      final current =
-                                          _votes[noteId]?[userId] ?? 0;
-                                      final next = (current + delta).clamp(0, 4);
-                                      if (next == current) return;
-                                      _setVote(noteId, next);
-                                    },
-                                  ),
-                                ),
-                              ),
+                          ? _VoteBoard(
+                              notes: _notes,
+                              votes: _votes,
+                              currentUserId: currentUserId,
+                              onSetVote: _setVote,
                             )
                           : isRetroBoardMode && retroStyle != 'mad_glad'
                           ? _RetroColumnBoard(
@@ -1301,6 +1308,18 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                               onMoveCard: _moveNoteToColumnEnd,
                               onUpdateCard: _updateNote,
                             )
+                          : isGroupingMode
+                          ? _GroupingBoard(
+                              notes: _notes,
+                              currentUserId: currentUserId,
+                              isPresenter: isPresenter,
+                              isOwner: canAssign,
+                              onGroupNotes: _groupNotes,
+                              onCreateGroup: _createGroupFromNote,
+                              onUngroupNote: _ungroupNote,
+                              onNoteDelete: _deleteNote,
+                              onRenameGroup: _updateNote,
+                            )
                           : ClipRect(
                               child: Listener(
                                 onPointerSignal: _onPointerSignal,
@@ -1308,7 +1327,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                                   onScaleStart: _onScaleStart,
                                   onScaleUpdate: _onScaleUpdate,
                                   child: _InfiniteCanvas(
-                                    notes: _notes,
+                                    notes: _notes.where((n) => !n.isGroup).toList(),
                                     offset: _offset,
                                     scale: _scale,
                                     isGroupingMode: isGroupingMode,
@@ -1359,9 +1378,21 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
 }
 
 // ─── Slide interstitial ───────────────────────────────────────────────────────
+// One record per slide carries everything that used to live in three
+// parallel lists (tab label, tab icon, interstitial copy) per flow type —
+// brainstorm, card sort, and retro each just supply one List<_SlideInfo>.
 
-const _interstitials = [
+typedef _SlideInfo = ({
+  String label,
+  IconData icon,
+  String title,
+  String description,
+  String action,
+});
+
+const _standardSlides = <_SlideInfo>[
   (
+    label: 'Problem',
     icon: Icons.lightbulb_outline,
     title: 'Problem Statement',
     description:
@@ -1369,6 +1400,7 @@ const _interstitials = [
     action: 'Got it',
   ),
   (
+    label: 'Brainstorm',
     icon: Icons.sticky_note_2_outlined,
     title: 'Brainstorm',
     description:
@@ -1376,6 +1408,7 @@ const _interstitials = [
     action: 'Start brainstorming',
   ),
   (
+    label: 'Group',
     icon: Icons.hub_outlined,
     title: 'Group',
     description:
@@ -1383,6 +1416,7 @@ const _interstitials = [
     action: 'Start grouping',
   ),
   (
+    label: 'Vote',
     icon: Icons.how_to_vote_outlined,
     title: 'Vote',
     description:
@@ -1390,6 +1424,7 @@ const _interstitials = [
     action: 'Start voting',
   ),
   (
+    label: 'Prioritise',
     icon: Icons.grid_view_outlined,
     title: 'Prioritise',
     description:
@@ -1398,14 +1433,16 @@ const _interstitials = [
   ),
 ];
 
-const _cardSortInterstitials = [
+const _cardSortSlides = <_SlideInfo>[
   (
+    label: 'Problem',
     icon: Icons.lightbulb_outline,
     title: 'Problem Statement',
     description: '',
     action: 'Got it',
   ),
   (
+    label: 'Add Cards',
     icon: Icons.style_outlined,
     title: 'Add Cards',
     description:
@@ -1413,6 +1450,7 @@ const _cardSortInterstitials = [
     action: 'Start adding cards',
   ),
   (
+    label: 'Group',
     icon: Icons.hub_outlined,
     title: 'Group',
     description:
@@ -1420,12 +1458,14 @@ const _cardSortInterstitials = [
     action: 'Start grouping',
   ),
   (
+    label: 'Vote',
     icon: Icons.how_to_vote_outlined,
     title: 'Vote',
     description: '',
     action: 'Start voting',
   ),
   (
+    label: 'Prioritise',
     icon: Icons.grid_view_outlined,
     title: 'Prioritise',
     description: '',
@@ -1440,50 +1480,64 @@ String _retroStyleLabel(String retroStyle) => switch (retroStyle) {
       _ => 'Retro',
     };
 
-List<({IconData icon, String title, String description, String action})>
-    _retroInterstitials(String retroStyle) => [
-          (
-            icon: Icons.lightbulb_outline,
-            title: 'Problem Statement',
-            description: '',
-            action: 'Got it',
-          ),
-          (
-            icon: Icons.history_outlined,
-            title: _retroStyleLabel(retroStyle),
-            description: switch (retroStyle) {
-              'starfish' =>
-                'Add cards to each column: More of, Less of, Start doing, Stop doing, and Continue.',
-              'start_stop_continue' =>
-                'Add cards to each column: Start, Stop, and Continue.',
-              'mad_glad' =>
-                'Add cards anywhere on the board, then drag them left or right to show how mad or glad they make you feel.',
-              _ => 'Add as many cards as you like.',
-            },
-            action: 'Start adding cards',
-          ),
-          (
-            icon: Icons.hub_outlined,
-            title: 'Group',
-            description:
-                'Drag similar cards onto each other to cluster them into themes. Look for patterns across the cards.',
-            action: 'Start grouping',
-          ),
-          (
-            icon: Icons.how_to_vote_outlined,
-            title: 'Vote',
-            description:
-                'You have 4 stars to distribute. Place them on the cards you think matter most.',
-            action: 'Start voting',
-          ),
-          (
-            icon: Icons.checklist_outlined,
-            title: 'Action Items',
-            description:
-                'Add concrete action items the team will follow up on.',
-            action: 'Start adding action items',
-          ),
-        ];
+List<_SlideInfo> _retroSlides(String retroStyle) => [
+      (
+        label: 'Problem',
+        icon: Icons.lightbulb_outline,
+        title: 'Problem Statement',
+        description: '',
+        action: 'Got it',
+      ),
+      (
+        label: _retroStyleLabel(retroStyle),
+        icon: Icons.history_outlined,
+        title: _retroStyleLabel(retroStyle),
+        description: switch (retroStyle) {
+          'starfish' =>
+            'Add cards to each column: More of, Less of, Start doing, Stop doing, and Continue.',
+          'start_stop_continue' =>
+            'Add cards to each column: Start, Stop, and Continue.',
+          'mad_glad' =>
+            'Add cards anywhere on the board, then drag them left or right to show how mad or glad they make you feel.',
+          _ => 'Add as many cards as you like.',
+        },
+        action: 'Start adding cards',
+      ),
+      (
+        label: 'Group',
+        icon: Icons.hub_outlined,
+        title: 'Group',
+        description:
+            'Drag similar cards onto each other to cluster them into themes. Look for patterns across the cards.',
+        action: 'Start grouping',
+      ),
+      (
+        label: 'Vote',
+        icon: Icons.how_to_vote_outlined,
+        title: 'Vote',
+        description:
+            'You have 4 stars to distribute. Place them on the cards you think matter most.',
+        action: 'Start voting',
+      ),
+      (
+        label: 'Action Items',
+        icon: Icons.checklist_outlined,
+        title: 'Action Items',
+        description: 'Add concrete action items the team will follow up on.',
+        action: 'Start adding action items',
+      ),
+    ];
+
+List<_SlideInfo> _slidesFor({
+  required bool isCardSort,
+  required bool isRetro,
+  required String retroStyle,
+}) =>
+    isRetro
+        ? _retroSlides(retroStyle)
+        : isCardSort
+            ? _cardSortSlides
+            : _standardSlides;
 
 class _SlideInterstitial extends StatelessWidget {
   final int slide;
@@ -1505,11 +1559,8 @@ class _SlideInterstitial extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final list = isRetro
-        ? _retroInterstitials(retroStyle)
-        : isCardSort
-            ? _cardSortInterstitials
-            : _interstitials;
+    final list =
+        _slidesFor(isCardSort: isCardSort, isRetro: isRetro, retroStyle: retroStyle);
     final info = list[slide.clamp(0, list.length - 1)];
     final description = customDescription ?? info.description;
 
@@ -1645,29 +1696,19 @@ class _RetroTimerBar extends StatelessWidget {
 
 // ─── Slide tab bar ────────────────────────────────────────────────────────────
 
-const _slideLabels = ['Problem', 'Brainstorm', 'Group', 'Vote', 'Prioritise'];
-const _cardSortSlideLabels = ['Problem', 'Add Cards', 'Group', 'Vote', 'Prioritise'];
-const _slideIcons = [Icons.lightbulb_outline, Icons.sticky_note_2_outlined, Icons.hub_outlined, Icons.how_to_vote_outlined, Icons.grid_view_outlined];
-const _retroSlideIconsBase = [Icons.lightbulb_outline, Icons.history_outlined, Icons.hub_outlined, Icons.how_to_vote_outlined, Icons.checklist_outlined];
-
-List<String> _retroSlideLabels(String retroStyle) =>
-    ['Problem', _retroStyleLabel(retroStyle), 'Group', 'Vote', 'Action Items'];
-
 class _SlideTabBar extends StatelessWidget {
   final int currentSlide;
   final bool enabled;
   final List<int> enabledSlides;
   final void Function(int) onSlideChanged;
-  final List<String> labels;
-  final List<IconData> icons;
+  final List<_SlideInfo> slides;
 
   const _SlideTabBar({
     required this.currentSlide,
     required this.enabled,
     required this.enabledSlides,
     required this.onSlideChanged,
-    this.labels = _slideLabels,
-    this.icons = _slideIcons,
+    this.slides = _standardSlides,
   });
 
   @override
@@ -1702,8 +1743,8 @@ class _SlideTabBar extends StatelessWidget {
             final (pos, i) = entry;
             return [
               _SlideTab(
-                label: labels[i],
-                icon: icons[i],
+                label: slides[i].label,
+                icon: slides[i].icon,
                 selected: currentSlide == i,
                 showLabel: showLabels,
                 onTap: enabled ? () => onSlideChanged(i) : null,
@@ -3232,6 +3273,800 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
   }
 }
 
+// ─── Grouping board ────────────────────────────────────────────────────────────
+// Same drag-and-drop mechanic as the prioritise list: items are rows you drag
+// onto another row to group them, instead of nudging sticky notes until they
+// happen to overlap on a canvas. Group cards grow to fit however many notes
+// are dropped into them.
+
+class _DashedRectPainter extends CustomPainter {
+  final Color color;
+
+  const _DashedRectPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rrect =
+        RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(8));
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    const dashWidth = 6.0;
+    const gapWidth = 4.0;
+    for (final metric in (Path()..addRRect(rrect)).computeMetrics()) {
+      double distance = 0;
+      while (distance < metric.length) {
+        final len = min(dashWidth, metric.length - distance);
+        canvas.drawPath(metric.extractPath(distance, distance + len), paint);
+        distance += dashWidth + gapWidth;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedRectPainter old) => old.color != color;
+}
+
+class _GroupingBoard extends StatefulWidget {
+  final List<StickyNote> notes;
+  final String currentUserId;
+  final bool isPresenter;
+  final bool isOwner;
+  final void Function(String draggedId, String targetId) onGroupNotes;
+  final void Function(String draggedId) onCreateGroup;
+  final void Function(String id) onUngroupNote;
+  final void Function(String id) onNoteDelete;
+  final void Function(String id, String content) onRenameGroup;
+
+  const _GroupingBoard({
+    required this.notes,
+    required this.currentUserId,
+    required this.isPresenter,
+    required this.isOwner,
+    required this.onGroupNotes,
+    required this.onCreateGroup,
+    required this.onUngroupNote,
+    required this.onNoteDelete,
+    required this.onRenameGroup,
+  });
+
+  @override
+  State<_GroupingBoard> createState() => _GroupingBoardState();
+}
+
+class _GroupingBoardState extends State<_GroupingBoard> {
+  bool _canDelete(StickyNote note) =>
+      widget.isPresenter || widget.isOwner || note.createdBy == widget.currentUserId;
+
+  Future<void> _showRenameGroupDialog(StickyNote group) async {
+    final controller = TextEditingController(text: group.content);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename group'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Group name'),
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name != null && name.trim() != group.content) {
+      widget.onRenameGroup(group.id, name.trim());
+    }
+  }
+
+  Future<void> _confirmDeleteGroup(StickyNote group) async {
+    final children = widget.notes.where((n) => n.parentId == group.id).toList();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete group?'),
+        content: Text(children.isEmpty
+            ? 'This group is empty.'
+            : 'The ${children.length} note${children.length == 1 ? '' : 's'} inside will move back to Ungrouped — they will not be deleted.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (children.isEmpty) {
+      widget.onNoteDelete(group.id);
+    } else {
+      // Ungrouping the last child makes the server delete the now-empty
+      // group note automatically.
+      for (final child in children) {
+        widget.onUngroupNote(child.id);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final groups = widget.notes.where((n) => n.isGroup).toList();
+    final groupIds = groups.map((g) => g.id).toSet();
+    // A note whose parentId points at a group that no longer exists (e.g.
+    // the group was deleted directly on Brainstorm before that cascaded
+    // properly) is treated as ungrouped rather than vanishing from view.
+    final ungrouped = widget.notes
+        .where((n) =>
+            !n.isGroup && (n.parentId == null || !groupIds.contains(n.parentId)))
+        .toList();
+
+    if (groups.isEmpty && ungrouped.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.sticky_note_2_outlined,
+                size: 72, color: cs.onSurfaceVariant),
+            const SizedBox(height: 16),
+            Text('No notes to group yet',
+                style: TextStyle(fontSize: 20, color: cs.onSurfaceVariant)),
+            const SizedBox(height: 8),
+            Text('Switch to Brainstorm to add notes first',
+                style: TextStyle(color: cs.onSurfaceVariant)),
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Whole column is one DragTarget now that rows inside it no
+            // longer have their own (card-on-card does nothing) — same
+            // pattern as a group column, just accepting = ungroup instead
+            // of join.
+            DragTarget<String>(
+              onAcceptWithDetails: (details) =>
+                  widget.onUngroupNote(details.data),
+              builder: (context, candidateData, rejectedData) => _buildColumn(
+                cs: cs,
+                title: 'Ungrouped',
+                icon: Icons.sticky_note_2_outlined,
+                fill: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+                accent: cs.outline,
+                count: ungrouped.length,
+                dropHighlight: candidateData.isNotEmpty,
+                children: ungrouped.map((n) => _buildNoteRow(n, cs)).toList(),
+              ),
+            ),
+            for (final g in groups) ...[
+              const SizedBox(width: 16),
+              _buildGroupColumn(g, cs),
+            ],
+            const SizedBox(width: 16),
+            _buildNewGroupDropZone(cs),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Dropping a card here (open board space — not onto an existing group)
+  // starts a brand-new group for it.
+  Widget _buildNewGroupDropZone(ColorScheme cs) {
+    return DragTarget<String>(
+      onAcceptWithDetails: (details) => widget.onCreateGroup(details.data),
+      builder: (context, candidateData, rejectedData) => Container(
+        width: 200,
+        height: 64,
+        decoration: BoxDecoration(
+          color: candidateData.isNotEmpty
+              ? cs.primary.withValues(alpha: 0.08)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: CustomPaint(
+          painter: _DashedRectPainter(
+              color: candidateData.isNotEmpty ? cs.primary : cs.outline),
+          child: Center(
+            child: Text(
+              'Drop here for a\nnew group',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGroupColumn(StickyNote group, ColorScheme cs) {
+    final children =
+        widget.notes.where((n) => n.parentId == group.id).toList();
+    final (fill, border) = _groupColors(group.id);
+    final title = group.content.isEmpty ? 'Untitled group' : group.content;
+
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => details.data != group.id,
+      onAcceptWithDetails: (details) =>
+          widget.onGroupNotes(details.data, group.id),
+      builder: (context, candidateData, rejectedData) => _buildColumn(
+        cs: cs,
+        title: title,
+        icon: Icons.hub_outlined,
+        fill: fill,
+        accent: border,
+        count: children.length,
+        dropHighlight: candidateData.isNotEmpty,
+        header: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: _columnHeaderContent(
+              cs, Icons.hub_outlined, border, title, children.length,
+              onTitleTap: () => _showRenameGroupDialog(group),
+              onDelete: () => _confirmDeleteGroup(group)),
+        ),
+        children: children
+            .map((n) => _buildNoteRow(n, cs, accent: border, inGroup: true))
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _buildNoteRow(
+    StickyNote note,
+    ColorScheme cs, {
+    Color? accent,
+    bool inGroup = false,
+  }) {
+    final bg = _hexColor(note.color);
+    final isDark = ThemeData.estimateBrightnessForColor(bg) == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final content = note.content.isEmpty ? '(empty note)' : note.content;
+    final canDelete = _canDelete(note);
+
+    final cardBody = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        border: accent != null
+            ? Border.all(color: accent.withValues(alpha: 0.7))
+            : null,
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              content,
+              style: TextStyle(fontSize: 13, color: textColor),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (inGroup)
+            IconButton(
+              icon: Icon(Icons.link_off, size: 16, color: textColor),
+              tooltip: 'Remove from group',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              onPressed: () => widget.onUngroupNote(note.id),
+            ),
+          if (canDelete)
+            IconButton(
+              icon: Icon(Icons.delete_outline, size: 16, color: textColor),
+              tooltip: 'Delete',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              onPressed: () => widget.onNoteDelete(note.id),
+            ),
+        ],
+      ),
+    );
+
+    // Plain Draggable — the board is a horizontal Scrollable, and a
+    // LongPressDraggable here loses the gesture arena to that scroll as
+    // soon as the pointer moves at all, before the long-press timer fires.
+    // Accidental merges are now prevented structurally instead (dropping on
+    // another card does nothing; only an existing group or the "new group"
+    // zone accepts a drop), so the plain Draggable no longer needs it.
+    final draggable = _draggableCardRow<String>(
+      key: ValueKey(note.id),
+      data: note.id,
+      child: cardBody,
+    );
+
+    // A row is never itself a drop target: dropping one card on another in
+    // Ungrouped does nothing, and a row already inside a group is covered
+    // by that group's own column-wide DragTarget (nesting another here
+    // would fire both accept callbacks on a single drop).
+    return Padding(
+      padding: EdgeInsets.only(bottom: inGroup ? 6 : 10),
+      child: draggable,
+    );
+  }
+}
+
+// Shared by the Group and Vote boards so both read as the same board
+// mechanic — a header row plus a vertically-growing list of cards.
+Widget _columnHeaderContent(
+        ColorScheme cs, IconData icon, Color accent, String title, int count,
+        {VoidCallback? onTitleTap, VoidCallback? onDelete}) =>
+    Row(
+      children: [
+        Icon(icon, size: 16, color: accent),
+        const SizedBox(width: 8),
+        Expanded(
+          child: onTitleTap == null
+              ? Text(
+                  title,
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: cs.onSurface),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                )
+              : InkWell(
+                  onTap: onTitleTap,
+                  child: Tooltip(
+                    message: 'Tap to rename',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                color: cs.onSurface),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.edit_outlined, size: 12, color: accent),
+                      ],
+                    ),
+                  ),
+                ),
+        ),
+        Text(
+          '$count item${count == 1 ? '' : 's'}',
+          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+        ),
+        if (onDelete != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: IconButton(
+              icon: Icon(Icons.delete_outline, size: 14, color: accent),
+              tooltip: 'Delete group',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+              onPressed: onDelete,
+            ),
+          ),
+      ],
+    );
+
+Widget _buildColumn({
+  required ColorScheme cs,
+  required String title,
+  required IconData icon,
+  required Color fill,
+  required Color accent,
+  required int count,
+  required List<Widget> children,
+  Widget? header,
+  bool dropHighlight = false,
+}) {
+  return Container(
+    width: 260,
+    decoration: BoxDecoration(
+      color: dropHighlight ? accent.withValues(alpha: 0.12) : fill,
+      border: Border.all(color: accent, width: dropHighlight ? 2.5 : 1.5),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        header ??
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: _columnHeaderContent(cs, icon, accent, title, count),
+            ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          child: Column(
+            children: [
+              ...children,
+              if (dropHighlight)
+                Container(
+                  margin: EdgeInsets.only(top: children.isEmpty ? 0 : 4),
+                  height: 44,
+                  width: double.infinity,
+                  child: CustomPaint(painter: _DashedRectPainter(color: accent)),
+                ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+// Shared by the Group board and Prioritise's sidebar list — a draggable
+// card row with the same feedback/childWhenDragging chrome, just with
+// room for each caller's own feedback sizing/padding and optional tap.
+Widget _draggableCardRow<T extends Object>({
+  required Key key,
+  required T data,
+  required Widget child,
+  double feedbackWidth = 260,
+  EdgeInsetsGeometry feedbackPadding = EdgeInsets.zero,
+  VoidCallback? onTap,
+}) {
+  return Draggable<T>(
+    key: key,
+    data: data,
+    feedbackOffset: Offset.zero,
+    feedback: Material(
+      color: Colors.transparent,
+      child: Container(
+        width: feedbackWidth,
+        padding: feedbackPadding,
+        child: Opacity(opacity: 0.85, child: child),
+      ),
+    ),
+    childWhenDragging: Opacity(opacity: 0.3, child: child),
+    child: onTap == null
+        ? child
+        : GestureDetector(
+            behavior: HitTestBehavior.opaque, onTap: onTap, child: child),
+  );
+}
+
+// ─── Vote board ────────────────────────────────────────────────────────────────
+// Same column mechanic as the Group board (Ungrouped + one column per
+// group), plus a "Your votes" pool column. Votes are little star tokens you
+// drag onto a card to assign, drag back to the pool to take back, or drag
+// straight onto a different card/column to move.
+
+class _VoteToken {
+  final String? fromNoteId;
+  const _VoteToken({this.fromNoteId});
+}
+
+class _VoteBoard extends StatefulWidget {
+  final List<StickyNote> notes;
+  final Map<String, Map<String, int>> votes;
+  final String currentUserId;
+  final void Function(String noteId, int count) onSetVote;
+
+  const _VoteBoard({
+    required this.notes,
+    required this.votes,
+    required this.currentUserId,
+    required this.onSetVote,
+  });
+
+  @override
+  State<_VoteBoard> createState() => _VoteBoardState();
+}
+
+class _VoteBoardState extends State<_VoteBoard> {
+  static const _maxStars = 4;
+
+  int _votesFor(String noteId) =>
+      widget.votes[noteId]?[widget.currentUserId] ?? 0;
+
+  int _totalVotesFor(String noteId) {
+    final m = widget.votes[noteId];
+    if (m == null) return 0;
+    return m.values.fold(0, (a, b) => a + b);
+  }
+
+  int get _myVotesUsed => widget.votes.values
+      .fold(0, (sum, m) => sum + (m[widget.currentUserId] ?? 0));
+
+  int get _starsLeft => _maxStars - _myVotesUsed;
+
+  void _moveVote(String? fromNoteId, String? toNoteId) {
+    if (fromNoteId == toNoteId) return;
+    if (fromNoteId != null) {
+      final cur = _votesFor(fromNoteId);
+      if (cur > 0) widget.onSetVote(fromNoteId, cur - 1);
+    } else if (_starsLeft <= 0) {
+      return; // pool is empty, nothing to place
+    }
+    if (toNoteId != null) {
+      final cur = _votesFor(toNoteId);
+      if (cur < _maxStars) widget.onSetVote(toNoteId, cur + 1);
+    }
+  }
+
+  Widget _buildStarRow(String noteId, Color onColor) {
+    final mine = _votesFor(noteId);
+    final total = _totalVotesFor(noteId);
+    final filled = total > 0;
+    final star = Icon(filled ? Icons.star : Icons.star_border,
+        size: 18, color: filled ? Colors.amber[700] : onColor.withValues(alpha: 0.4));
+
+    // Only draggable when you have a vote here yourself — you can only
+    // move or take back your own star, not one someone else placed.
+    final starWidget = mine > 0
+        ? Draggable<_VoteToken>(
+            data: _VoteToken(fromNoteId: noteId),
+            feedback: const Icon(Icons.star, size: 24, color: Colors.amber),
+            childWhenDragging: Icon(Icons.star_border,
+                size: 18, color: onColor.withValues(alpha: 0.4)),
+            child: star,
+          )
+        : star;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        starWidget,
+        const SizedBox(width: 4),
+        Text('$total',
+            style: TextStyle(fontSize: 12, color: onColor.withValues(alpha: 0.8))),
+      ],
+    );
+  }
+
+  Widget _buildVotableCard(StickyNote note, ColorScheme cs) {
+    final bg = _hexColor(note.color);
+    final isDark = ThemeData.estimateBrightnessForColor(bg) == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final content = note.content.isEmpty ? '(empty note)' : note.content;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: DragTarget<_VoteToken>(
+        onWillAcceptWithDetails: (d) => d.data.fromNoteId != note.id,
+        onAcceptWithDetails: (d) => _moveVote(d.data.fromNoteId, note.id),
+        builder: (context, candidateData, rejectedData) => Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(8),
+            border: candidateData.isNotEmpty
+                ? Border.all(color: cs.primary, width: 2)
+                : null,
+            boxShadow: const [
+              BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(content,
+                  style: TextStyle(fontSize: 13, color: textColor),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 6),
+              _buildStarRow(note.id, textColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyChildRow(StickyNote note, ColorScheme cs, Color accent) {
+    final content = note.content.isEmpty ? '(empty note)' : note.content;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Opacity(
+        opacity: 0.7,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: _hexColor(note.color),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: accent.withValues(alpha: 0.5)),
+          ),
+          child: Text(content,
+              style: TextStyle(
+                  fontSize: 12,
+                  color: ThemeData.estimateBrightnessForColor(_hexColor(note.color)) ==
+                          Brightness.dark
+                      ? Colors.white
+                      : Colors.black87),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVotesTray(ColorScheme cs) {
+    return DragTarget<_VoteToken>(
+      onWillAcceptWithDetails: (d) => d.data.fromNoteId != null,
+      onAcceptWithDetails: (d) => _moveVote(d.data.fromNoteId, null),
+      builder: (context, candidateData, rejectedData) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: candidateData.isNotEmpty
+              ? cs.primary.withValues(alpha: 0.08)
+              : cs.surfaceContainerHighest.withValues(alpha: 0.4),
+          border: Border(top: BorderSide(color: cs.outline)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.how_to_vote_outlined, size: 18, color: cs.outline),
+            const SizedBox(width: 8),
+            Text('Your votes',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: cs.onSurface)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _starsLeft == 0
+                  ? Text('All votes placed',
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))
+                  : Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: List.generate(
+                        _starsLeft,
+                        (i) => Draggable<_VoteToken>(
+                          data: const _VoteToken(),
+                          feedback:
+                              const Icon(Icons.star, size: 28, color: Colors.amber),
+                          childWhenDragging:
+                              Icon(Icons.star_border, size: 24, color: cs.outline),
+                          child: const Icon(Icons.star, size: 24, color: Colors.amber),
+                        ),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGroupColumn(StickyNote group, ColorScheme cs) {
+    final children =
+        widget.notes.where((n) => n.parentId == group.id).toList();
+    final (fill, border) = _groupColors(group.id);
+    final title = group.content.isEmpty ? 'Untitled group' : group.content;
+
+    return _buildColumn(
+      cs: cs,
+      title: title,
+      icon: Icons.hub_outlined,
+      fill: fill,
+      accent: border,
+      count: children.length,
+      header: DragTarget<_VoteToken>(
+        onWillAcceptWithDetails: (d) => d.data.fromNoteId != group.id,
+        onAcceptWithDetails: (d) => _moveVote(d.data.fromNoteId, group.id),
+        builder: (context, candidateData, rejectedData) => Container(
+          decoration: BoxDecoration(
+            color: candidateData.isNotEmpty
+                ? border.withValues(alpha: 0.25)
+                : Colors.transparent,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Row(
+            children: [
+              Icon(Icons.hub_outlined, size: 16, color: border),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(title,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: cs.onSurface),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ),
+              _buildStarRow(group.id, cs.onSurface),
+            ],
+          ),
+        ),
+      ),
+      children: children
+          .map((n) => _buildReadOnlyChildRow(n, cs, border))
+          .toList(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final groups = widget.notes.where((n) => n.isGroup).toList();
+    final groupIds = groups.map((g) => g.id).toSet();
+    final ungrouped = widget.notes
+        .where((n) =>
+            !n.isGroup && (n.parentId == null || !groupIds.contains(n.parentId)))
+        .toList();
+
+    final isEmpty = groups.isEmpty && ungrouped.isEmpty;
+
+    return Column(
+      children: [
+        Expanded(
+          child: isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.how_to_vote_outlined,
+                          size: 72, color: cs.onSurfaceVariant),
+                      const SizedBox(height: 16),
+                      Text('No notes to vote on yet',
+                          style: TextStyle(
+                              fontSize: 20, color: cs.onSurfaceVariant)),
+                      const SizedBox(height: 8),
+                      Text('Add notes in Brainstorm and group them first',
+                          style: TextStyle(color: cs.onSurfaceVariant)),
+                    ],
+                  ),
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildColumn(
+                          cs: cs,
+                          title: 'Ungrouped',
+                          icon: Icons.sticky_note_2_outlined,
+                          fill: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+                          accent: cs.outline,
+                          count: ungrouped.length,
+                          children:
+                              ungrouped.map((n) => _buildVotableCard(n, cs)).toList(),
+                        ),
+                        for (final g in groups) ...[
+                          const SizedBox(width: 16),
+                          _buildGroupColumn(g, cs),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+        ),
+        _buildVotesTray(cs),
+      ],
+    );
+  }
+}
+
 // ─── Cost-value matrix ─────────────────────────────────────────────────────────
 
 class _CostValueMatrix extends StatefulWidget {
@@ -3292,9 +4127,10 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
     bool onBoard = false,
   }) {
     final color = _dotColor(note);
-    final childCount = note.isGroup
-        ? widget.notes.where((n) => n.parentId == note.id).length
-        : 0;
+    final children = note.isGroup
+        ? widget.notes.where((n) => n.parentId == note.id).toList()
+        : const <StickyNote>[];
+    final childCount = children.length;
     final label = note.content.isEmpty
         ? (note.isGroup ? 'Untitled group' : '')
         : note.content;
@@ -3334,6 +4170,23 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
                     '$childCount item${childCount == 1 ? '' : 's'}',
                     style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
                   ),
+                if (isExpanded && note.isGroup && children.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: children
+                          .map((child) => Padding(
+                                padding: const EdgeInsets.only(bottom: 3),
+                                child: Text(
+                                  '•  ${child.content.isEmpty ? '(empty note)' : child.content}',
+                                  style: TextStyle(
+                                      fontSize: 11, color: cs.onSurfaceVariant),
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -3342,25 +4195,13 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
         ],
       ),
     );
-    return Draggable<String>(
+    return _draggableCardRow<String>(
       key: ValueKey(note.id),
       data: note.id,
-      feedbackOffset: Offset.zero,
-      feedback: Material(
-        color: Colors.transparent,
-        child: Container(
-          width: isMobile ? 140 : 220,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Opacity(opacity: 0.85, child: row),
-        ),
-      ),
-      childWhenDragging: Opacity(opacity: 0.3, child: row),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () =>
-            setState(() => _expandedId = isExpanded ? null : note.id),
-        child: row,
-      ),
+      feedbackWidth: isMobile ? 140 : 220,
+      feedbackPadding: const EdgeInsets.symmetric(horizontal: 8),
+      onTap: () => setState(() => _expandedId = isExpanded ? null : note.id),
+      child: row,
     );
   }
 
@@ -3382,7 +4223,14 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
 
   @override
   Widget build(BuildContext context) {
-    var items = widget.notes.where((n) => n.isGroup || n.parentId == null).toList();
+    final groupIds =
+        widget.notes.where((n) => n.isGroup).map((n) => n.id).toSet();
+    // Same orphan guard as the grouping board: a note whose parentId points
+    // at a since-deleted group counts as top-level, not hidden.
+    var items = widget.notes
+        .where((n) =>
+            n.isGroup || n.parentId == null || !groupIds.contains(n.parentId))
+        .toList();
     if (widget.voteFilterEnabled) {
       items = items.where((n) => _totalVotesFor(n.id) > 0).toList();
     }
@@ -3723,266 +4571,6 @@ class _MatrixPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_MatrixPainter old) => old.isDark != isDark;
-}
-
-// ─── Vote canvas ───────────────────────────────────────────────────────────────
-
-class _VoteCanvas extends StatelessWidget {
-  final List<StickyNote> notes;
-  final Map<String, Map<String, int>> votes;
-  final String currentUserId;
-  final int starsLeft;
-  final Offset offset;
-  final double scale;
-  final void Function(String noteId, int delta) onVoteDelta;
-
-  const _VoteCanvas({
-    required this.notes,
-    required this.votes,
-    required this.currentUserId,
-    required this.starsLeft,
-    required this.offset,
-    required this.scale,
-    required this.onVoteDelta,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Stack(
-      clipBehavior: Clip.hardEdge,
-      children: [
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _InfiniteGridPainter(
-              offset: offset,
-              scale: scale,
-              bgColor: cs.surfaceContainerHighest,
-              dotColor: cs.outline,
-            ),
-          ),
-        ),
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _GroupBackgroundPainter(
-                notes: notes, offset: offset, scale: scale),
-          ),
-        ),
-        if (notes.isEmpty)
-          Center(
-            child: Builder(builder: (context) {
-              final cs = Theme.of(context).colorScheme;
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.how_to_vote_outlined,
-                      size: 72, color: cs.onSurfaceVariant),
-                  const SizedBox(height: 16),
-                  Text('No notes to vote on yet',
-                      style:
-                          TextStyle(fontSize: 20, color: cs.onSurfaceVariant)),
-                  const SizedBox(height: 8),
-                  Text('Add notes in Brainstorm and group them first',
-                      style: TextStyle(color: cs.onSurfaceVariant)),
-                ],
-              );
-            }),
-          ),
-        // Child notes first, then group notes on top (same z-order as canvas).
-        ...[...notes.where((n) => !n.isGroup), ...notes.where((n) => n.isGroup)]
-            .map((note) => _VotePositionedNote(
-                  key: ValueKey('vote_${note.id}'),
-                  note: note,
-                  offset: offset,
-                  scale: scale,
-                  noteVotes: votes[note.id] ?? {},
-                  currentUserId: currentUserId,
-                  starsLeft: starsLeft,
-                  onVoteDelta: (delta) => onVoteDelta(note.id, delta),
-                )),
-        _StarTray(starsLeft: starsLeft),
-      ],
-    );
-  }
-}
-
-class _VotePositionedNote extends StatelessWidget {
-  final StickyNote note;
-  final Offset offset;
-  final double scale;
-  final Map<String, int> noteVotes;
-  final String currentUserId;
-  final int starsLeft;
-  final void Function(int delta) onVoteDelta;
-
-  const _VotePositionedNote({
-    super.key,
-    required this.note,
-    required this.offset,
-    required this.scale,
-    required this.noteVotes,
-    required this.currentUserId,
-    required this.starsLeft,
-    required this.onVoteDelta,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final screenX = note.posX * scale + offset.dx;
-    final screenY = note.posY * scale + offset.dy;
-    final myVotes = noteVotes[currentUserId] ?? 0;
-    final totalVotes = noteVotes.values.fold(0, (a, b) => a + b);
-
-    return Positioned(
-      left: screenX,
-      top: screenY,
-      child: Transform.scale(
-        scale: scale,
-        alignment: Alignment.topLeft,
-        child: DragTarget<bool>(
-          onWillAcceptWithDetails: (_) => starsLeft > 0,
-          onAcceptWithDetails: (_) => onVoteDelta(1),
-          builder: (context, candidateData, _) {
-            final isHovered = candidateData.isNotEmpty;
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  decoration: isHovered
-                      ? BoxDecoration(
-                          borderRadius: BorderRadius.circular(6),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.amber.withValues(alpha: 0.6),
-                              blurRadius: 14,
-                              spreadRadius: 3,
-                            ),
-                          ],
-                        )
-                      : null,
-                  child: _NoteCard(
-                    note: note,
-                    isGroupingMode: false,
-                    showActions: false,
-                    onDelete: () {},
-                  ),
-                ),
-                if (totalVotes > 0)
-                  Positioned(
-                    top: -10,
-                    right: -10,
-                    child: GestureDetector(
-                      onTap: myVotes > 0 ? () => onVoteDelta(-1) : null,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: myVotes > 0
-                              ? Colors.amber[700]
-                              : Colors.grey[500],
-                          borderRadius: BorderRadius.circular(10),
-                          boxShadow: const [
-                            BoxShadow(blurRadius: 4, color: Colors.black26),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.star,
-                                size: 11, color: Colors.white),
-                            const SizedBox(width: 2),
-                            Text(
-                              '$totalVotes',
-                              style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _StarTray extends StatelessWidget {
-  final int starsLeft;
-
-  const _StarTray({required this.starsLeft});
-
-  @override
-  Widget build(BuildContext context) {
-    const total = 4;
-    final cs = Theme.of(context).colorScheme;
-    return Positioned(
-      bottom: 20,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: cs.surface,
-            borderRadius: BorderRadius.circular(30),
-            boxShadow: [
-              BoxShadow(
-                blurRadius: 12,
-                color: Colors.black.withValues(alpha: 0.15),
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Drag to vote  ',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w500),
-              ),
-              ...List.generate(total, (i) {
-                final isAvailable = i < starsLeft;
-                final star = Icon(
-                  Icons.star_rounded,
-                  color: isAvailable ? Colors.amber : cs.outline,
-                  size: 32,
-                );
-                if (!isAvailable) return star;
-                return Draggable<bool>(
-                  data: true,
-                  feedback: const Material(
-                    color: Colors.transparent,
-                    child: Icon(Icons.star_rounded,
-                        color: Colors.amber, size: 38),
-                  ),
-                  childWhenDragging: Icon(Icons.star_outline_rounded,
-                      color: cs.outline, size: 32),
-                  child: star,
-                );
-              }),
-              const SizedBox(width: 6),
-              Text(
-                '$starsLeft / $total',
-                style:
-                    TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // ─── Retro column board (starfish / start-stop-continue) ──────────────────────

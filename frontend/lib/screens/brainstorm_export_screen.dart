@@ -1,3 +1,5 @@
+import 'dart:html' as html;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -29,6 +31,8 @@ class _BrainstormExportScreenState extends State<BrainstormExportScreen> {
   String? _selectedProvider;
   bool _exporting = false;
   String? _exportError;
+  String? _exportingDataFormat;
+  String? _dataExportError;
 
   @override
   void initState() {
@@ -69,6 +73,79 @@ class _BrainstormExportScreenState extends State<BrainstormExportScreen> {
     }
   }
 
+  Future<void> _downloadData(String format) async {
+    if (_exportingDataFormat != null) return;
+    setState(() {
+      _exportingDataFormat = format;
+      _dataExportError = null;
+    });
+    try {
+      final api = context.read<AuthProvider>().api;
+      final bytes = await api.exportBrainstormData(
+        groupSlug: widget.groupSlug,
+        brainstormSlug: widget.brainstormSlug,
+        format: format,
+      );
+      final mimeType = format == 'csv' ? 'text/csv' : 'application/json';
+      final blob = html.Blob([bytes], mimeType);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      html.AnchorElement(href: url)
+        ..setAttribute('download', 'brainstorm-${widget.brainstormSlug}-export.$format')
+        ..click();
+      html.Url.revokeObjectUrl(url);
+    } catch (e) {
+      if (mounted) setState(() => _dataExportError = e.toString());
+    } finally {
+      if (mounted) setState(() => _exportingDataFormat = null);
+    }
+  }
+
+  Widget _buildDataExportSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Export data', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        const Text(
+          'Cards placed on the prioritize matrix, with their coordinates, '
+          'quadrant, and vote count — ranked by position within each quadrant.',
+          style: TextStyle(color: Colors.grey, fontSize: 12),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _exportingDataFormat != null ? null : () => _downloadData('json'),
+              icon: _exportingDataFormat == 'json'
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.download),
+              label: const Text('Download JSON'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _exportingDataFormat != null ? null : () => _downloadData('csv'),
+              icon: _exportingDataFormat == 'csv'
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.download),
+              label: const Text('Download CSV'),
+            ),
+          ],
+        ),
+        if (_dataExportError != null) ...[
+          const SizedBox(height: 12),
+          Text(_dataExportError!, style: const TextStyle(color: Colors.red)),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -91,38 +168,17 @@ class _BrainstormExportScreenState extends State<BrainstormExportScreen> {
 
           final data = snap.data!;
           final connected = data.integrations.where((i) => i.targetRef.isNotEmpty).toList();
-
-          if (connected.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.link_off, size: 40, color: Colors.grey),
-                    SizedBox(height: 12),
-                    Text(
-                      'This group\'s team hasn\'t connected GitHub or Asana yet, '
-                      'or hasn\'t set a target repo/project.',
-                      textAlign: TextAlign.center,
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      'Ask the team owner to connect one in team settings.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-            );
+          if (connected.isNotEmpty) {
+            _selectedProvider ??= connected.first.provider;
           }
-
-          _selectedProvider ??= connected.first.provider;
 
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              _buildDataExportSection(),
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 24),
               Text('Export this brainstorm\'s note groups',
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 4),
@@ -133,31 +189,51 @@ class _BrainstormExportScreenState extends State<BrainstormExportScreen> {
                 style: TextStyle(color: Colors.grey, fontSize: 12),
               ),
               const SizedBox(height: 16),
-              if (connected.length > 1)
-                Wrap(
-                  spacing: 8,
-                  children: connected
-                      .map((i) => ChoiceChip(
-                            label: Text(_providerLabels[i.provider] ?? i.provider),
-                            selected: _selectedProvider == i.provider,
-                            onSelected: (_) => setState(() => _selectedProvider = i.provider),
-                          ))
-                      .toList(),
+              if (connected.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.link_off, size: 24, color: Colors.grey),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'This group\'s team hasn\'t connected GitHub or Asana yet, '
+                          'or hasn\'t set a target repo/project. Ask the team owner to '
+                          'connect one in team settings.',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else ...[
+                if (connected.length > 1)
+                  Wrap(
+                    spacing: 8,
+                    children: connected
+                        .map((i) => ChoiceChip(
+                              label: Text(_providerLabels[i.provider] ?? i.provider),
+                              selected: _selectedProvider == i.provider,
+                              onSelected: (_) => setState(() => _selectedProvider = i.provider),
+                            ))
+                        .toList(),
+                  ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _exporting ? null : _export,
+                  icon: _exporting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.ios_share),
+                  label: Text('Export to ${_providerLabels[_selectedProvider] ?? _selectedProvider}'),
                 ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: _exporting ? null : _export,
-                icon: _exporting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.ios_share),
-                label: Text('Export to ${_providerLabels[_selectedProvider] ?? _selectedProvider}'),
-              ),
-              if (_exportError != null) ...[
-                const SizedBox(height: 12),
-                Text(_exportError!, style: const TextStyle(color: Colors.red)),
+                if (_exportError != null) ...[
+                  const SizedBox(height: 12),
+                  Text(_exportError!, style: const TextStyle(color: Colors.red)),
+                ],
               ],
               const SizedBox(height: 24),
               if (data.runs.isNotEmpty) ...[

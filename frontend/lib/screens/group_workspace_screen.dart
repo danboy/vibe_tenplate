@@ -24,6 +24,13 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
   String _search = '';
   Timer? _refreshTimer;
 
+  // 'recent' | 'oldest' | 'name'
+  String _sortBy = 'recent';
+  // 'all' | 'brainstorm' | 'card_sort' | 'retro'
+  String _typeFilter = 'all';
+  // 'all' | 'today' | 'week' | 'month' | 'year'
+  String _dateFilter = 'all';
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +66,22 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
   }
 
   void _refresh() => setState(() => _load());
+
+  DateTime _dateFilterCutoff(String filter) {
+    final now = DateTime.now();
+    switch (filter) {
+      case 'today':
+        return DateTime(now.year, now.month, now.day);
+      case 'week':
+        return now.subtract(const Duration(days: 7));
+      case 'month':
+        return now.subtract(const Duration(days: 30));
+      case 'year':
+        return now.subtract(const Duration(days: 365));
+      default:
+        return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+  }
 
   Future<void> _showCreateDialog(Group group) async {
     final nameCtrl = TextEditingController();
@@ -175,17 +198,21 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                         dense: true,
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Problem Statement'),
-                        subtitle: const Text('Collaborative problem statement editor'),
+                        subtitle: const Text(
+                            'Collaborative problem statement editor'),
                         value: enableProblem,
-                        onChanged: (v) => setLocal(() => enableProblem = v ?? true),
+                        onChanged: (v) =>
+                            setLocal(() => enableProblem = v ?? true),
                       ),
                       CheckboxListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Vote'),
-                        subtitle: const Text('Team members place stars on notes'),
+                        subtitle:
+                            const Text('Team members place stars on notes'),
                         value: enableVote,
-                        onChanged: (v) => setLocal(() => enableVote = v ?? true),
+                        onChanged: (v) =>
+                            setLocal(() => enableVote = v ?? true),
                       ),
                       CheckboxListTile(
                         dense: true,
@@ -202,9 +229,11 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                       dense: true,
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Allow guests'),
-                      subtitle: const Text('Anyone with the link can join without logging in'),
+                      subtitle: const Text(
+                          'Anyone with the link can join without logging in'),
                       value: guestsEnabled,
-                      onChanged: (v) => setLocal(() => guestsEnabled = v ?? false),
+                      onChanged: (v) =>
+                          setLocal(() => guestsEnabled = v ?? false),
                     ),
                     if (type == 'retro')
                       _TimerSection(
@@ -217,7 +246,8 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                       controllers: iCtrl,
                       enableProblem: type == 'brainstorm' && enableProblem,
                       enableVote: type == 'brainstorm' && enableVote,
-                      enablePrioritise: type == 'brainstorm' && enablePrioritise,
+                      enablePrioritise:
+                          type == 'brainstorm' && enablePrioritise,
                       isCardSort: type == 'card_sort',
                       isRetro: type == 'retro',
                     ),
@@ -232,12 +262,14 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.lock_outline, size: 16, color: Colors.amber.shade700),
+                          Icon(Icons.lock_outline,
+                              size: 16, color: Colors.amber.shade700),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               'Upgrade to Standard or Pro to customise activity settings.',
-                              style: TextStyle(fontSize: 12, color: Colors.amber.shade800),
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.amber.shade800),
                             ),
                           ),
                         ],
@@ -302,7 +334,8 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
   Future<void> _showEditDialog(Brainstorm brainstorm) async {
     final nameCtrl = TextEditingController(text: brainstorm.name);
     final descCtrl = TextEditingController(text: brainstorm.description);
-    final problemCtrl = TextEditingController(text: brainstorm.problemStatement);
+    final problemCtrl =
+        TextEditingController(text: brainstorm.problemStatement);
     final iCtrl = _InterstitialControllers(
       problem: brainstorm.interstitialProblem,
       brainstorm: brainstorm.interstitialBrainstorm,
@@ -320,7 +353,8 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
     final timerMinutesCtrl =
         TextEditingController(text: '${brainstorm.timerMinutes}');
     // Fetch group to get current plan
-    final group = await context.read<AuthProvider>().api.getGroup(widget.groupSlug);
+    final group =
+        await context.read<AuthProvider>().api.getGroup(widget.groupSlug);
     if (!mounted) return;
     final canCustomize = group.plan != 'free';
 
@@ -344,12 +378,11 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                                 ? Icons.style_outlined
                                 : Icons.folder_outlined,
                         size: 18),
-                    label: Text(
-                        brainstorm.isRetro
-                            ? 'Retro'
-                            : brainstorm.isCardSort
-                                ? 'Card sorting'
-                                : 'Brainstorm'),
+                    label: Text(brainstorm.isRetro
+                        ? 'Retro'
+                        : brainstorm.isCardSort
+                            ? 'Card sorting'
+                            : 'Brainstorm'),
                   ),
                   if (brainstorm.isRetro) ...[
                     const SizedBox(height: 4),
@@ -407,17 +440,21 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                         dense: true,
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Problem Statement'),
-                        subtitle: const Text('Collaborative problem statement editor'),
+                        subtitle: const Text(
+                            'Collaborative problem statement editor'),
                         value: enableProblem,
-                        onChanged: (v) => setLocal(() => enableProblem = v ?? true),
+                        onChanged: (v) =>
+                            setLocal(() => enableProblem = v ?? true),
                       ),
                       CheckboxListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Vote'),
-                        subtitle: const Text('Team members place stars on notes'),
+                        subtitle:
+                            const Text('Team members place stars on notes'),
                         value: enableVote,
-                        onChanged: (v) => setLocal(() => enableVote = v ?? true),
+                        onChanged: (v) =>
+                            setLocal(() => enableVote = v ?? true),
                       ),
                       CheckboxListTile(
                         dense: true,
@@ -434,9 +471,11 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                       dense: true,
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Allow guests'),
-                      subtitle: const Text('Anyone with the link can join without logging in'),
+                      subtitle: const Text(
+                          'Anyone with the link can join without logging in'),
                       value: guestsEnabled,
-                      onChanged: (v) => setLocal(() => guestsEnabled = v ?? false),
+                      onChanged: (v) =>
+                          setLocal(() => guestsEnabled = v ?? false),
                     ),
                     if (brainstorm.isRetro)
                       _TimerSection(
@@ -447,9 +486,13 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                     const SizedBox(height: 8),
                     _InterstitialSection(
                       controllers: iCtrl,
-                      enableProblem: !brainstorm.isCardSort && !brainstorm.isRetro && enableProblem,
+                      enableProblem: !brainstorm.isCardSort &&
+                          !brainstorm.isRetro &&
+                          enableProblem,
                       enableVote: !brainstorm.isCardSort && enableVote,
-                      enablePrioritise: !brainstorm.isCardSort && !brainstorm.isRetro && enablePrioritise,
+                      enablePrioritise: !brainstorm.isCardSort &&
+                          !brainstorm.isRetro &&
+                          enablePrioritise,
                       isCardSort: brainstorm.isCardSort,
                       isRetro: brainstorm.isRetro,
                     ),
@@ -464,12 +507,14 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.lock_outline, size: 16, color: Colors.amber.shade700),
+                          Icon(Icons.lock_outline,
+                              size: 16, color: Colors.amber.shade700),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               'Upgrade to Standard or Pro to customise activity settings.',
-                              style: TextStyle(fontSize: 12, color: Colors.amber.shade800),
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.amber.shade800),
                             ),
                           ),
                         ],
@@ -507,10 +552,14 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
         brainstormSlug: brainstorm.slug,
         name: nameCtrl.text.trim(),
         description: descCtrl.text.trim(),
-        problemStatement: brainstorm.isCardSort || brainstorm.isRetro ? '' : problemCtrl.text.trim(),
-        enableProblem: !brainstorm.isCardSort && !brainstorm.isRetro && enableProblem,
+        problemStatement: brainstorm.isCardSort || brainstorm.isRetro
+            ? ''
+            : problemCtrl.text.trim(),
+        enableProblem:
+            !brainstorm.isCardSort && !brainstorm.isRetro && enableProblem,
         enableVote: !brainstorm.isCardSort && enableVote,
-        enablePrioritise: !brainstorm.isCardSort && !brainstorm.isRetro && enablePrioritise,
+        enablePrioritise:
+            !brainstorm.isCardSort && !brainstorm.isRetro && enablePrioritise,
         guestsEnabled: guestsEnabled,
         timerEnabled: brainstorm.isRetro && timerEnabled,
         timerMinutes: int.tryParse(timerMinutesCtrl.text.trim()) ?? 5,
@@ -542,7 +591,8 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
 
     try {
       final api = context.read<AuthProvider>().api;
-      await api.deleteBrainstorm(groupSlug: widget.groupSlug, brainstormSlug: brainstorm.slug);
+      await api.deleteBrainstorm(
+          groupSlug: widget.groupSlug, brainstormSlug: brainstorm.slug);
       _refresh();
     } catch (e) {
       if (mounted) {
@@ -651,7 +701,7 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
       );
     }
 
-    final filtered = _search.isEmpty
+    var filtered = _search.isEmpty
         ? projects
         : projects
             .where((p) =>
@@ -659,17 +709,25 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
                 p.description.toLowerCase().contains(_search.toLowerCase()))
             .toList();
 
-    if (filtered.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.search_off, size: 64, color: Colors.grey),
-            SizedBox(height: 16),
-            Text('No brainstorms found', style: TextStyle(fontSize: 16)),
-          ],
-        ),
-      );
+    if (_typeFilter != 'all') {
+      filtered = filtered.where((p) => p.type == _typeFilter).toList();
+    }
+    if (_dateFilter != 'all') {
+      final cutoff = _dateFilterCutoff(_dateFilter);
+      filtered = filtered.where((p) => p.createdAt.isAfter(cutoff)).toList();
+    }
+
+    filtered = [...filtered];
+    switch (_sortBy) {
+      case 'name':
+        filtered.sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        break;
+      case 'oldest':
+        filtered.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        break;
+      default:
+        filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     }
 
     return Column(
@@ -684,35 +742,136 @@ class _GroupWorkspaceScreenState extends State<GroupWorkspaceScreen> {
             onChanged: (v) => setState(() => _search = v),
           ),
         ),
-        Expanded(
-          child: RefreshIndicator(
-      onRefresh: () async => _refresh(),
-      child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
-        itemCount: filtered.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (context, i) {
-          final p = filtered[i];
-          final canDelete =
-              p.createdBy == me.id || group!.ownerId == me.id;
-          return _ProjectCard(
-            brainstorm: p,
-            canDelete: canDelete,
-            onEdit: canDelete ? () => _showEditDialog(p) : null,
-            onDelete: () => _confirmDelete(group!, p),
-            onTap: () => context.go(
-              '/groups/${widget.groupSlug}/brainstorms/${p.slug}',
-            ),
-          );
-        },
-      ),
-    ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _FilterDropdown(
+                icon: Icons.sort,
+                value: _sortBy,
+                items: const {
+                  'recent': 'Most recent',
+                  'oldest': 'Oldest first',
+                  'name': 'Name (A–Z)',
+                },
+                onChanged: (v) => setState(() => _sortBy = v),
+              ),
+              _FilterDropdown(
+                icon: Icons.category_outlined,
+                value: _typeFilter,
+                items: const {
+                  'all': 'All types',
+                  'brainstorm': 'Brainstorm',
+                  'card_sort': 'Card Sort',
+                  'retro': 'Retro',
+                },
+                onChanged: (v) => setState(() => _typeFilter = v),
+              ),
+              _FilterDropdown(
+                icon: Icons.calendar_today_outlined,
+                value: _dateFilter,
+                items: const {
+                  'all': 'All time',
+                  'today': 'Today',
+                  'week': 'Past 7 days',
+                  'month': 'Past 30 days',
+                  'year': 'Past year',
+                },
+                onChanged: (v) => setState(() => _dateFilter = v),
+              ),
+            ],
+          ),
         ),
+        if (filtered.isEmpty)
+          const Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.search_off, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text('No brainstorms found', style: TextStyle(fontSize: 16)),
+                ],
+              ),
+            ),
+          )
+        else
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async => _refresh(),
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+                itemCount: filtered.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, i) {
+                  final p = filtered[i];
+                  final canDelete =
+                      p.createdBy == me.id || group!.ownerId == me.id;
+                  return _ProjectCard(
+                    brainstorm: p,
+                    canDelete: canDelete,
+                    onEdit: canDelete ? () => _showEditDialog(p) : null,
+                    onDelete: () => _confirmDelete(group!, p),
+                    onTap: () => context.go(
+                      '/groups/${widget.groupSlug}/brainstorms/${p.slug}',
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
       ],
     );
   }
 }
 
+class _FilterDropdown extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final Map<String, String> items;
+  final ValueChanged<String> onChanged;
+
+  const _FilterDropdown({
+    required this.icon,
+    required this.value,
+    required this.items,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outline),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 6),
+          DropdownButton<String>(
+            value: value,
+            underline: const SizedBox.shrink(),
+            isDense: true,
+            style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface),
+            items: items.entries
+                .map(
+                    (e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                .toList(),
+            onChanged: (v) {
+              if (v != null) onChanged(v);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _ProjectCard extends StatelessWidget {
   final Brainstorm brainstorm;
@@ -775,7 +934,8 @@ class _ProjectCard extends StatelessWidget {
                             style: const TextStyle(
                                 color: Colors.grey, fontSize: 12)),
                         const SizedBox(width: 12),
-                        const Icon(Icons.schedule, size: 13, color: Colors.grey),
+                        const Icon(Icons.schedule,
+                            size: 13, color: Colors.grey),
                         const SizedBox(width: 4),
                         Text(_formatDate(brainstorm.createdAt),
                             style: const TextStyle(
@@ -844,8 +1004,10 @@ class _ProjectCard extends StatelessWidget {
                       const PopupMenuItem(
                         value: 'delete',
                         child: ListTile(
-                          leading: Icon(Icons.delete_outline, color: Colors.red),
-                          title: Text('Delete', style: TextStyle(color: Colors.red)),
+                          leading:
+                              Icon(Icons.delete_outline, color: Colors.red),
+                          title: Text('Delete',
+                              style: TextStyle(color: Colors.red)),
                           contentPadding: EdgeInsets.zero,
                         ),
                       ),
@@ -858,8 +1020,7 @@ class _ProjectCard extends StatelessWidget {
     );
   }
 
-  String _formatDate(DateTime dt) =>
-      '${dt.day}/${dt.month}/${dt.year}';
+  String _formatDate(DateTime dt) => '${dt.day}/${dt.month}/${dt.year}';
 }
 
 class _TimerSection extends StatelessWidget {

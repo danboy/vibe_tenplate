@@ -492,6 +492,19 @@ class ApiService {
     return list.map((r) => ExportRun.fromJson(r as Map<String, dynamic>)).toList();
   }
 
+  Future<List<int>> exportBrainstormData({
+    required String groupSlug,
+    required String brainstormSlug,
+    required String format, // 'json' | 'csv'
+  }) async {
+    final response = await _get(Uri.parse(
+        '$baseUrl/groups/$groupSlug/brainstorms/$brainstormSlug/export/data?format=$format'));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException('failed to export data', response.statusCode);
+    }
+    return response.bodyBytes;
+  }
+
   // ── Groups ──────────────────────────────────────────────────────────────────
 
   Future<List<Group>> listGroups() async {

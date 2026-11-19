@@ -209,6 +209,8 @@ class _SidebarContentState extends State<_SidebarContent> {
                     tooltip: widget.expanded
                         ? 'Collapse sidebar'
                         : 'Expand sidebar',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(width: 32, height: 32),
                   ),
                 if (widget.expanded) ...[
                   if (widget.showToggle) const SizedBox(width: 4),
