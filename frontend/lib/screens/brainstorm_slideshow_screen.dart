@@ -49,8 +49,9 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
   // The current user's id, whether authenticated or a guest — AuthProvider
   // is never populated for guest sessions, so ownership checks (blur, vote,
   // delete) must fall back to the guest id issued at join time.
-  String get _myUserId =>
-      _isGuest ? (_guestUserId ?? '') : (context.read<AuthProvider>().user?.id ?? '');
+  String get _myUserId => _isGuest
+      ? (_guestUserId ?? '')
+      : (context.read<AuthProvider>().user?.id ?? '');
 
   // 0 = problem, 1 = brainstorm, 2 = group, 3 = vote, 4 = prioritise
   int _slide = 0;
@@ -74,7 +75,10 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
 
   int get _timerSecondsLeft {
     if (_timerRunning && _timerEndsAt != null) {
-      return _timerEndsAt!.difference(DateTime.now()).inSeconds.clamp(0, _timerDurationSeconds);
+      return _timerEndsAt!
+          .difference(DateTime.now())
+          .inSeconds
+          .clamp(0, _timerDurationSeconds);
     }
     return _timerRemainingSeconds;
   }
@@ -124,7 +128,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
 
   void _onMatrixPositionChanged(String id, Offset normalized) {
     setState(() => _matrixPositions[id] = normalized);
-    _send('matrix_move', {'id': id, 'cost': normalized.dx, 'value': normalized.dy});
+    _send('matrix_move',
+        {'id': id, 'cost': normalized.dx, 'value': normalized.dy});
   }
 
   void _onMatrixDragStart(String id) {
@@ -217,8 +222,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
 
   void _setProblemTextSize(_ProblemTextSize size) {
     setState(() => _problemTextSize = size);
-    SharedPreferences.getInstance()
-        .then((prefs) => prefs.setString(_problemTextSizePrefsKey, size.storageValue));
+    SharedPreferences.getInstance().then((prefs) =>
+        prefs.setString(_problemTextSizePrefsKey, size.storageValue));
   }
 
   Future<void> _loadAndConnect() async {
@@ -228,7 +233,9 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
       try {
         final api = auth.api;
         final results = await Future.wait([
-          api.getBrainstorm(groupSlug: widget.groupSlug, brainstormSlug: widget.brainstormSlug),
+          api.getBrainstorm(
+              groupSlug: widget.groupSlug,
+              brainstormSlug: widget.brainstormSlug),
           api.getGroup(widget.groupSlug),
         ]);
         if (!mounted) return;
@@ -243,8 +250,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
     } else {
       // Unauthenticated — check if guests are enabled for this project.
       try {
-        final info = await const ApiService().getGuestBrainstorm(
-            widget.groupSlug, widget.brainstormSlug);
+        final info = await const ApiService()
+            .getGuestBrainstorm(widget.groupSlug, widget.brainstormSlug);
         if (!mounted) return;
         if (info['guests_enabled'] != true) {
           setState(() => _loginRequired = true);
@@ -386,7 +393,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
     if (_isGuest) return false;
     final userId = context.read<AuthProvider>().user?.id;
     if (userId == null || _brainstorm == null) return false;
-    if (_brainstorm!.presenterId != null) return userId == _brainstorm!.presenterId;
+    if (_brainstorm!.presenterId != null)
+      return userId == _brainstorm!.presenterId;
     return userId == _brainstorm!.createdBy;
   }
 
@@ -435,8 +443,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           _votes.clear();
           for (final v in (p['votes'] as List? ?? [])) {
             final vMap = v as Map<String, dynamic>;
-            _votes.putIfAbsent(vMap['note_id'] as String, () => {})[
-                vMap['user_id'] as String] = vMap['count'] as int;
+            _votes.putIfAbsent(vMap['note_id'] as String,
+                () => {})[vMap['user_id'] as String] = vMap['count'] as int;
           }
           _problemStatement = (p['problem_statement'] as String?) ?? '';
           _actionItems = (p['action_items'] as List? ?? [])
@@ -448,7 +456,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           _blurNotes = (p['blur_notes'] as bool?) ?? false;
           _connectedCount = (p['connected_count'] as int?) ?? 1;
           _wsInitialized = true;
-          if (_notes.isNotEmpty && (_slide == 1 || _slide == 2 || _slide == 3)) {
+          if (_notes.isNotEmpty &&
+              (_slide == 1 || _slide == 2 || _slide == 3)) {
             _centerIfNeeded();
           }
 
@@ -522,7 +531,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
             final pname = payload['presenter_username'] as String?;
             _brainstorm = pid == null
                 ? _brainstorm!.copyWith(clearPresenter: true)
-                : _brainstorm!.copyWith(presenterId: pid, presenterUsername: pname);
+                : _brainstorm!
+                    .copyWith(presenterId: pid, presenterUsername: pname);
           }
 
         case 'vote':
@@ -725,8 +735,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                   ),
                   ...members.map((m) => RadioListTile<String?>(
                         title: Text(m.username),
-                        subtitle: Text(m.email,
-                            style: const TextStyle(fontSize: 11)),
+                        subtitle:
+                            Text(m.email, style: const TextStyle(fontSize: 11)),
                         value: m.id,
                       )),
                 ],
@@ -858,10 +868,10 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: Text(
-              (_brainstorm?.isCardSort ?? false) || (_brainstorm?.isRetro ?? false)
-                  ? 'New Card'
-                  : 'New Sticky Note'),
+          title: Text((_brainstorm?.isCardSort ?? false) ||
+                  (_brainstorm?.isRetro ?? false)
+              ? 'New Card'
+              : 'New Sticky Note'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -891,8 +901,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                         color: _hexColor(c),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color:
-                              selected ? Colors.black87 : Colors.transparent,
+                          color: selected ? Colors.black87 : Colors.transparent,
                           width: 2.5,
                         ),
                         boxShadow: selected
@@ -966,7 +975,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
   }
 
   void _moveNoteToColumnEnd(String id, String column, int columnIndex) {
-    _moveNoteToColumn(id, column, _columnPosX(columnIndex), _columnPosY(column));
+    _moveNoteToColumn(
+        id, column, _columnPosX(columnIndex), _columnPosY(column));
   }
 
   Future<void> _showAddActionItemDialog() async {
@@ -1102,9 +1112,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
     final isPresenter = _isPresenter;
     final canAssign = _canAssignPresenter;
     final currentUserId = _myUserId;
-    final presenterLabel = _brainstorm?.presenterUsername
-        ?? _brainstorm?.creatorUsername
-        ?? '';
+    final presenterLabel =
+        _brainstorm?.presenterUsername ?? _brainstorm?.creatorUsername ?? '';
 
     final enabledSlides = [
       if (enableProblem) 0,
@@ -1127,7 +1136,9 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
             Text(_brainstorm?.name ?? '…'),
             if (presenterLabel.isNotEmpty)
               Text(
-                isPresenter ? 'You are presenting' : 'Presenter: $presenterLabel',
+                isPresenter
+                    ? 'You are presenting'
+                    : 'Presenter: $presenterLabel',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: isPresenter
                           ? Theme.of(context).colorScheme.primary
@@ -1149,7 +1160,9 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
               tooltip: 'Change your name ($_guestDisplayName)',
               onPressed: _changeGuestName,
             ),
-          if (isPresenter && enabledSlides.isNotEmpty && _slide == enabledSlides.last)
+          if (isPresenter &&
+              enabledSlides.isNotEmpty &&
+              _slide == enabledSlides.last)
             IconButton(
               icon: const Icon(Icons.ios_share),
               tooltip: 'Export',
@@ -1166,9 +1179,7 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
           if (isPresenter && _slide == 1 && !isRetro)
             IconButton(
               icon: Icon(_blurNotes ? Icons.blur_off : Icons.blur_on),
-              tooltip: _blurNotes
-                  ? "Show others' notes"
-                  : "Blur others' notes",
+              tooltip: _blurNotes ? "Show others' notes" : "Blur others' notes",
               onPressed: _toggleBlurNotes,
             ),
           IconButton(
@@ -1268,93 +1279,118 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                             _psDebounce?.cancel();
                             _psDebounce = Timer(
                               const Duration(milliseconds: 300),
-                              () => _send('problem_statement_update', {'text': text}),
+                              () => _send(
+                                  'problem_statement_update', {'text': text}),
                             );
                           },
                         )
                       : isActionItemsMode
-                      ? _ActionItemsList(
-                          items: _actionItems,
-                          onCreate: _createActionItem,
-                          onUpdate: _updateActionItem,
-                          onDelete: _deleteActionItem,
-                        )
-                      : isCostValueMode
-                      ? _CostValueMatrix(
-                          notes: _notes,
-                          positions: _matrixPositions,
-                          lockedBy: _matrixLockedBy,
-                          currentUserId: currentUserId,
-                          votes: _votes,
-                          voteFilterEnabled: enableVote,
-                          onPositionChanged: _onMatrixPositionChanged,
-                          onDragStart: _onMatrixDragStart,
-                          onDragEnd: _onMatrixDragEnd,
-                          onRemoveFromMatrix: _onMatrixRemove,
-                        )
-                      : isVotingMode
-                          ? _VoteBoard(
-                              notes: _notes,
-                              votes: _votes,
-                              currentUserId: currentUserId,
-                              onSetVote: _setVote,
+                          ? _ActionItemsList(
+                              items: _actionItems,
+                              onCreate: _createActionItem,
+                              onUpdate: _updateActionItem,
+                              onDelete: _deleteActionItem,
                             )
-                          : isRetroBoardMode && retroStyle != 'mad_glad'
-                          ? _RetroColumnBoard(
-                              retroStyle: retroStyle,
-                              notes: _notes,
-                              currentUserId: currentUserId,
-                              onCreateCard: _createNoteInColumn,
-                              onMoveCard: _moveNoteToColumnEnd,
-                              onUpdateCard: _updateNote,
-                            )
-                          : isGroupingMode
-                          ? _GroupingBoard(
-                              notes: _notes,
-                              currentUserId: currentUserId,
-                              isPresenter: isPresenter,
-                              isOwner: canAssign,
-                              onGroupNotes: _groupNotes,
-                              onCreateGroup: _createGroupFromNote,
-                              onUngroupNote: _ungroupNote,
-                              onNoteDelete: _deleteNote,
-                              onRenameGroup: _updateNote,
-                            )
-                          : ClipRect(
-                              child: Listener(
-                                onPointerSignal: _onPointerSignal,
-                                child: GestureDetector(
-                                  onScaleStart: _onScaleStart,
-                                  onScaleUpdate: _onScaleUpdate,
-                                  child: _InfiniteCanvas(
-                                    notes: _notes.where((n) => !n.isGroup).toList(),
-                                    offset: _offset,
-                                    scale: _scale,
-                                    isGroupingMode: isGroupingMode,
-                                    groupDragOffsets: _groupDragOffsets,
-                                    onNoteMove: _moveNote,
-                                    onNoteDelete: _deleteNote,
-                                    onNoteUpdate: _updateNote,
-                                    onGroupNotes: _groupNotes,
-                                    onUngroupNote: _ungroupNote,
-                                    onFindOverlap: _findOverlap,
-                                    onGroupDragUpdate: _onGroupDragUpdate,
-                                    onGroupDragEnd: _onGroupDragEnd,
-                                    onNoteDragStart: () =>
-                                        setState(() => _isDraggingNote = true),
-                                    onNoteDragEnd: () =>
-                                        setState(() => _isDraggingNote = false),
-                                    currentUserId: currentUserId,
-                                    isPresenter: isPresenter,
-                                    isOwner: canAssign,
-                                    isCardSort: _brainstorm?.isCardSort ?? false,
-                                    madGladMode: isRetroBoardMode && retroStyle == 'mad_glad',
-                                    blurOthersUnlessOwner: (isRetroBoardMode && retroStyle == 'mad_glad') ||
-                                        (_slide == 1 && !isRetro && _blurNotes),
-                                  ),
-                                ),
-                              ),
-                            ),
+                          : isCostValueMode
+                              ? _CostValueMatrix(
+                                  notes: _notes,
+                                  positions: _matrixPositions,
+                                  lockedBy: _matrixLockedBy,
+                                  currentUserId: currentUserId,
+                                  votes: _votes,
+                                  voteFilterEnabled: enableVote,
+                                  onPositionChanged: _onMatrixPositionChanged,
+                                  onDragStart: _onMatrixDragStart,
+                                  onDragEnd: _onMatrixDragEnd,
+                                  onRemoveFromMatrix: _onMatrixRemove,
+                                )
+                              : isVotingMode
+                                  ? _VoteBoard(
+                                      notes: _notes,
+                                      votes: _votes,
+                                      currentUserId: currentUserId,
+                                      onSetVote: _setVote,
+                                    )
+                                  : isRetroBoardMode && retroStyle != 'mad_glad'
+                                      ? _RetroColumnBoard(
+                                          retroStyle: retroStyle,
+                                          notes: _notes,
+                                          currentUserId: currentUserId,
+                                          onCreateCard: _createNoteInColumn,
+                                          onMoveCard: _moveNoteToColumnEnd,
+                                          onUpdateCard: _updateNote,
+                                        )
+                                      : isGroupingMode
+                                          ? _GroupingBoard(
+                                              notes: _notes,
+                                              currentUserId: currentUserId,
+                                              isPresenter: isPresenter,
+                                              isOwner: canAssign,
+                                              onGroupNotes: _groupNotes,
+                                              onCreateGroup:
+                                                  _createGroupFromNote,
+                                              onUngroupNote: _ungroupNote,
+                                              onNoteDelete: _deleteNote,
+                                              onRenameGroup: _updateNote,
+                                            )
+                                          : ClipRect(
+                                              child: Listener(
+                                                onPointerSignal:
+                                                    _onPointerSignal,
+                                                child: GestureDetector(
+                                                  onScaleStart: _onScaleStart,
+                                                  onScaleUpdate: _onScaleUpdate,
+                                                  child: _InfiniteCanvas(
+                                                    notes: _notes
+                                                        .where(
+                                                            (n) => !n.isGroup)
+                                                        .toList(),
+                                                    offset: _offset,
+                                                    scale: _scale,
+                                                    isGroupingMode:
+                                                        isGroupingMode,
+                                                    groupDragOffsets:
+                                                        _groupDragOffsets,
+                                                    onNoteMove: _moveNote,
+                                                    onNoteDelete: _deleteNote,
+                                                    onNoteUpdate: _updateNote,
+                                                    onGroupNotes: _groupNotes,
+                                                    onUngroupNote: _ungroupNote,
+                                                    onFindOverlap: _findOverlap,
+                                                    onGroupDragUpdate:
+                                                        _onGroupDragUpdate,
+                                                    onGroupDragEnd:
+                                                        _onGroupDragEnd,
+                                                    onNoteDragStart: () =>
+                                                        setState(() =>
+                                                            _isDraggingNote =
+                                                                true),
+                                                    onNoteDragEnd: () =>
+                                                        setState(() =>
+                                                            _isDraggingNote =
+                                                                false),
+                                                    currentUserId:
+                                                        currentUserId,
+                                                    isPresenter: isPresenter,
+                                                    isOwner: canAssign,
+                                                    isCardSort: _brainstorm
+                                                            ?.isCardSort ??
+                                                        false,
+                                                    madGladMode:
+                                                        isRetroBoardMode &&
+                                                            retroStyle ==
+                                                                'mad_glad',
+                                                    blurOthersUnlessOwner:
+                                                        (isRetroBoardMode &&
+                                                                retroStyle ==
+                                                                    'mad_glad') ||
+                                                            (_slide == 1 &&
+                                                                !isRetro &&
+                                                                _blurNotes),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
                 ),
                 if (_showInterstitial)
                   _SlideInterstitial(
@@ -1362,7 +1398,8 @@ class _BrainstormSlideshowScreenState extends State<BrainstormSlideshowScreen> {
                     isCardSort: _brainstorm?.isCardSort ?? false,
                     isRetro: isRetro,
                     retroStyle: retroStyle,
-                    customDescription: _brainstorm?.interstitialForSlide(_slide),
+                    customDescription:
+                        _brainstorm?.interstitialForSlide(_slide),
                     onDismiss: () {
                       setState(() => _dismissedInterstitials.add(_slide));
                       _saveDismissed();
@@ -1559,8 +1596,8 @@ class _SlideInterstitial extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final list =
-        _slidesFor(isCardSort: isCardSort, isRetro: isRetro, retroStyle: retroStyle);
+    final list = _slidesFor(
+        isCardSort: isCardSort, isRetro: isRetro, retroStyle: retroStyle);
     final info = list[slide.clamp(0, list.length - 1)];
     final description = customDescription ?? info.description;
 
@@ -1663,7 +1700,8 @@ class _RetroTimerBar extends StatelessWidget {
       child: Row(
         children: [
           Icon(Icons.timer_outlined,
-              size: 18, color: expired ? Colors.red.shade900 : Colors.orange.shade900),
+              size: 18,
+              color: expired ? Colors.red.shade900 : Colors.orange.shade900),
           const SizedBox(width: 8),
           Text(
             '$minutes:$seconds',
@@ -1677,13 +1715,15 @@ class _RetroTimerBar extends StatelessWidget {
           if (isPresenter) ...[
             IconButton(
               icon: Icon(running ? Icons.pause : Icons.play_arrow,
-                  color: expired ? Colors.red.shade900 : Colors.orange.shade900),
+                  color:
+                      expired ? Colors.red.shade900 : Colors.orange.shade900),
               tooltip: running ? 'Pause timer' : 'Start timer',
               onPressed: running ? onPause : onStart,
             ),
             IconButton(
               icon: Icon(Icons.restart_alt,
-                  color: expired ? Colors.red.shade900 : Colors.orange.shade900),
+                  color:
+                      expired ? Colors.red.shade900 : Colors.orange.shade900),
               tooltip: 'Reset timer',
               onPressed: onReset,
             ),
@@ -1761,7 +1801,8 @@ class _SlideTabBar extends StatelessWidget {
           // Slide counter (position within enabled slides)
           Text(
             '${idx + 1} / ${enabledSlides.length}',
-            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+            style: TextStyle(
+                fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(width: 4),
           // Next arrow
@@ -1799,7 +1840,8 @@ class _NavArrow extends StatelessWidget {
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(4),
           ),
-          child: Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
+          child:
+              Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
         ),
       ),
     );
@@ -1844,18 +1886,17 @@ class _SlideTab extends StatelessWidget {
                     ? theme.colorScheme.primary
                     : theme.colorScheme.onSurfaceVariant),
             if (showLabel) ...[
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight:
-                    selected ? FontWeight.w600 : FontWeight.w400,
-                color: selected
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant,
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  color: selected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
             ],
           ],
         ),
@@ -1991,13 +2032,10 @@ class _InfiniteCanvas extends StatelessWidget {
               final all = [groupNote, ...children];
               final minX = all.map((n) => n.posX).reduce(min);
               final minY = all.map((n) => n.posY).reduce(min);
-              final maxX =
-                  all.map((n) => n.posX + _noteWidth).reduce(max);
-              final maxY =
-                  all.map((n) => n.posY + _noteMinHeight).reduce(max);
+              final maxX = all.map((n) => n.posX + _noteWidth).reduce(max);
+              final maxY = all.map((n) => n.posY + _noteMinHeight).reduce(max);
               const pad = 18.0;
-              final dragOff =
-                  groupDragOffsets[groupNote.id] ?? Offset.zero;
+              final dragOff = groupDragOffsets[groupNote.id] ?? Offset.zero;
               return [
                 _GroupDragArea(
                   key: ValueKey('drag_area_${groupNote.id}'),
@@ -2016,8 +2054,10 @@ class _InfiniteCanvas extends StatelessWidget {
               ];
             }),
             // Child notes first, then group notes on top.
-            ...[...notes.where((n) => !n.isGroup), ...notes.where((n) => n.isGroup)]
-                .map((note) {
+            ...[
+              ...notes.where((n) => !n.isGroup),
+              ...notes.where((n) => n.isGroup)
+            ].map((note) {
               final groupId = note.isGroup ? note.id : note.parentId;
               final dragOffset = groupId != null
                   ? (groupDragOffsets[groupId] ?? Offset.zero)
@@ -2040,8 +2080,10 @@ class _InfiniteCanvas extends StatelessWidget {
                 onGroupDragEnd: onGroupDragEnd,
                 onDragStart: onNoteDragStart,
                 onDragEnd: onNoteDragEnd,
-                canDelete: isPresenter || isOwner || note.createdBy == currentUserId,
-                blurred: blurOthersUnlessOwner && note.createdBy != currentUserId,
+                canDelete:
+                    isPresenter || isOwner || note.createdBy == currentUserId,
+                blurred:
+                    blurOthersUnlessOwner && note.createdBy != currentUserId,
               );
             }),
           ],
@@ -2100,8 +2142,10 @@ class _InfiniteGridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_InfiniteGridPainter old) =>
-      old.offset != offset || old.scale != scale ||
-      old.bgColor != bgColor || old.dotColor != dotColor;
+      old.offset != offset ||
+      old.scale != scale ||
+      old.bgColor != bgColor ||
+      old.dotColor != dotColor;
 }
 
 // ─── Group background painter ─────────────────────────────────────────────────
@@ -2204,9 +2248,7 @@ class _MadGladBackgroundPainter extends CustomPainter {
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      final dx = alignLeft
-          ? 24.0
-          : canvasSize.width - painter.width - 24.0;
+      final dx = alignLeft ? 24.0 : canvasSize.width - painter.width - 24.0;
       painter.paint(canvas, Offset(dx, 20));
     }
   }
@@ -2448,8 +2490,7 @@ class _NoteCard extends StatelessWidget {
     }
 
     final bg = _hexColor(note.color);
-    final isDark =
-        ThemeData.estimateBrightnessForColor(bg) == Brightness.dark;
+    final isDark = ThemeData.estimateBrightnessForColor(bg) == Brightness.dark;
     final textColor = isDark ? Colors.white : Colors.black87;
     final subtleColor = isDark ? Colors.white60 : Colors.black38;
     final isChild = note.parentId != null;
@@ -2524,14 +2565,12 @@ class _NoteCard extends StatelessWidget {
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      Icon(Icons.person_outline,
-                          size: 11, color: subtleColor),
+                      Icon(Icons.person_outline, size: 11, color: subtleColor),
                       const SizedBox(width: 3),
                       Expanded(
                         child: Text(
                           note.author,
-                          style:
-                              TextStyle(fontSize: 11, color: subtleColor),
+                          style: TextStyle(fontSize: 11, color: subtleColor),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -2629,12 +2668,17 @@ class _NoteCard extends StatelessWidget {
                           onSubmitted: (_) => onEditDone?.call(),
                         )
                       : Text(
-                          note.content.isEmpty ? 'Untitled group' : note.content,
+                          note.content.isEmpty
+                              ? 'Untitled group'
+                              : note.content,
                           style: TextStyle(
                             fontSize: 13,
                             height: 1.45,
                             color: note.content.isEmpty
-                                ? Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
+                                ? Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant
+                                    .withValues(alpha: 0.5)
                                 : Theme.of(context).colorScheme.onSurface,
                             fontStyle: note.content.isEmpty
                                 ? FontStyle.italic
@@ -2652,7 +2696,8 @@ class _NoteCard extends StatelessWidget {
                   onTap: onDelete,
                   child: Container(
                     padding: const EdgeInsets.all(3),
-                    child: Icon(Icons.close, size: 14,
+                    child: Icon(Icons.close,
+                        size: 14,
                         color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ),
@@ -2749,16 +2794,25 @@ class _ProblemRichText extends StatelessWidget {
     int last = 0;
     for (final match in _ProblemTextController._styleRegex.allMatches(text)) {
       if (match.start > last) {
-        spans.add(TextSpan(text: text.substring(last, match.start), style: base));
+        spans.add(
+            TextSpan(text: text.substring(last, match.start), style: base));
       }
       if (match.group(1) != null) {
-        spans.add(TextSpan(text: match.group(1), style: base.copyWith(fontWeight: FontWeight.bold)));
+        spans.add(TextSpan(
+            text: match.group(1),
+            style: base.copyWith(fontWeight: FontWeight.bold)));
       } else if (match.group(2) != null) {
-        spans.add(TextSpan(text: match.group(2), style: base.copyWith(decoration: TextDecoration.lineThrough)));
+        spans.add(TextSpan(
+            text: match.group(2),
+            style: base.copyWith(decoration: TextDecoration.lineThrough)));
       } else if (match.group(3) != null) {
-        spans.add(TextSpan(text: match.group(3), style: base.copyWith(decoration: TextDecoration.underline)));
+        spans.add(TextSpan(
+            text: match.group(3),
+            style: base.copyWith(decoration: TextDecoration.underline)));
       } else if (match.group(4) != null) {
-        spans.add(TextSpan(text: match.group(4), style: base.copyWith(fontStyle: FontStyle.italic)));
+        spans.add(TextSpan(
+            text: match.group(4),
+            style: base.copyWith(fontStyle: FontStyle.italic)));
       }
       last = match.end;
     }
@@ -2771,7 +2825,9 @@ class _ProblemRichText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final base = TextStyle(
-        fontSize: fontSize, height: 1.6, color: Theme.of(context).colorScheme.onSurface);
+        fontSize: fontSize,
+        height: 1.6,
+        color: Theme.of(context).colorScheme.onSurface);
     return RichText(text: TextSpan(children: _parse(text, base)));
   }
 }
@@ -2796,33 +2852,43 @@ class _ProblemTextController extends TextEditingController {
     final spans = <InlineSpan>[];
     int last = 0;
 
-    final hidden = style?.copyWith(fontSize: 0.001, color: Colors.transparent) ??
-        const TextStyle(fontSize: 0.001, color: Colors.transparent);
+    final hidden =
+        style?.copyWith(fontSize: 0.001, color: Colors.transparent) ??
+            const TextStyle(fontSize: 0.001, color: Colors.transparent);
 
     for (final match in _styleRegex.allMatches(text)) {
       if (match.start > last) {
-        spans.add(TextSpan(text: text.substring(last, match.start), style: style));
+        spans.add(
+            TextSpan(text: text.substring(last, match.start), style: style));
       }
 
       if (match.group(1) != null) {
         // Bold
         spans.add(TextSpan(text: '**', style: hidden));
-        spans.add(TextSpan(text: match.group(1), style: style?.copyWith(fontWeight: FontWeight.bold)));
+        spans.add(TextSpan(
+            text: match.group(1),
+            style: style?.copyWith(fontWeight: FontWeight.bold)));
         spans.add(TextSpan(text: '**', style: hidden));
       } else if (match.group(2) != null) {
         // Strikethrough
         spans.add(TextSpan(text: '~~', style: hidden));
-        spans.add(TextSpan(text: match.group(2), style: style?.copyWith(decoration: TextDecoration.lineThrough)));
+        spans.add(TextSpan(
+            text: match.group(2),
+            style: style?.copyWith(decoration: TextDecoration.lineThrough)));
         spans.add(TextSpan(text: '~~', style: hidden));
       } else if (match.group(3) != null) {
         // Underline
         spans.add(TextSpan(text: '__', style: hidden));
-        spans.add(TextSpan(text: match.group(3), style: style?.copyWith(decoration: TextDecoration.underline)));
+        spans.add(TextSpan(
+            text: match.group(3),
+            style: style?.copyWith(decoration: TextDecoration.underline)));
         spans.add(TextSpan(text: '__', style: hidden));
       } else if (match.group(4) != null) {
         // Italic
         spans.add(TextSpan(text: '*', style: hidden));
-        spans.add(TextSpan(text: match.group(4), style: style?.copyWith(fontStyle: FontStyle.italic)));
+        spans.add(TextSpan(
+            text: match.group(4),
+            style: style?.copyWith(fontStyle: FontStyle.italic)));
         spans.add(TextSpan(text: '*', style: hidden));
       }
 
@@ -2883,12 +2949,13 @@ class _ProblemToolbarState extends State<_ProblemToolbar> {
     if (selWrapped) {
       final inner = selected.substring(m, selected.length - m);
       newText = text.replaceRange(sel.start, sel.end, inner);
-      newSelection =
-          TextSelection(baseOffset: sel.start, extentOffset: sel.start + inner.length);
+      newSelection = TextSelection(
+          baseOffset: sel.start, extentOffset: sel.start + inner.length);
     } else if (outerWrapped) {
       newText = text.replaceRange(sel.start - m, sel.end + m, selected);
       newSelection = TextSelection(
-          baseOffset: sel.start - m, extentOffset: sel.start - m + selected.length);
+          baseOffset: sel.start - m,
+          extentOffset: sel.start - m + selected.length);
     } else {
       final replacement = '$marker$selected$marker';
       newText = text.replaceRange(sel.start, sel.end, replacement);
@@ -2896,7 +2963,8 @@ class _ProblemToolbarState extends State<_ProblemToolbar> {
       newSelection = TextSelection.collapsed(offset: newOffset);
     }
 
-    widget.ctrl.value = TextEditingValue(text: newText, selection: newSelection);
+    widget.ctrl.value =
+        TextEditingValue(text: newText, selection: newSelection);
     widget.onChanged(newText);
   }
 
@@ -2957,7 +3025,10 @@ class _ProblemToolbarState extends State<_ProblemToolbar> {
                 onPressed: () => setState(() => _showEmoji = !_showEmoji),
               ),
               const SizedBox(width: 14),
-              Container(width: 1, height: 20, color: Theme.of(context).colorScheme.outline),
+              Container(
+                  width: 1,
+                  height: 20,
+                  color: Theme.of(context).colorScheme.outline),
               const SizedBox(width: 14),
             ],
             PopupMenuButton<_ProblemTextSize>(
@@ -2971,7 +3042,9 @@ class _ProblemToolbarState extends State<_ProblemToolbar> {
                     child: Row(
                       children: [
                         if (size == widget.textSize)
-                          Icon(Icons.check, size: 16, color: Theme.of(context).colorScheme.primary)
+                          Icon(Icons.check,
+                              size: 16,
+                              color: Theme.of(context).colorScheme.primary)
                         else
                           const SizedBox(width: 16),
                         const SizedBox(width: 8),
@@ -2987,9 +3060,11 @@ class _ProblemToolbarState extends State<_ProblemToolbar> {
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Theme.of(context).colorScheme.outline),
+                  border:
+                      Border.all(color: Theme.of(context).colorScheme.outline),
                 ),
-                child: Icon(Icons.format_size, size: 18, color: Theme.of(context).colorScheme.onSurface),
+                child: Icon(Icons.format_size,
+                    size: 18, color: Theme.of(context).colorScheme.onSurface),
               ),
             ),
           ],
@@ -3057,8 +3132,7 @@ class _ToolbarButton extends StatelessWidget {
           decoration: BoxDecoration(
             color: active ? cs.primaryContainer : cs.surface,
             borderRadius: BorderRadius.circular(4),
-            border: Border.all(
-                color: active ? cs.primary : cs.outline),
+            border: Border.all(color: active ? cs.primary : cs.outline),
           ),
           child: Text(
             label,
@@ -3191,7 +3265,8 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
                         ),
                         child: Text(
                           'Read only',
-                          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                          style: TextStyle(
+                              fontSize: 11, color: cs.onSurfaceVariant),
                         ),
                       ),
                     ],
@@ -3215,12 +3290,15 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
                           expands: true,
                           textAlignVertical: TextAlignVertical.top,
                           style: TextStyle(
-                              fontSize: widget.textSize.fontSize, height: 1.6, color: cs.onSurface),
+                              fontSize: widget.textSize.fontSize,
+                              height: 1.6,
+                              color: cs.onSurface),
                           decoration: InputDecoration(
                             hintText:
                                 'Describe the problem you\'re trying to solve…',
                             hintStyle: TextStyle(
-                                color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                                color:
+                                    cs.onSurfaceVariant.withValues(alpha: 0.5),
                                 fontSize: widget.textSize.fontSize),
                             filled: true,
                             fillColor: cs.surface,
@@ -3254,7 +3332,8 @@ class _ProblemStatementSlideState extends State<_ProblemStatementSlide> {
                                     'No problem statement defined yet.',
                                     style: TextStyle(
                                         fontSize: widget.textSize.fontSize,
-                                        color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                                        color: cs.onSurfaceVariant
+                                            .withValues(alpha: 0.5),
                                         fontStyle: FontStyle.italic),
                                   )
                                 : _ProblemRichText(
@@ -3337,7 +3416,9 @@ class _GroupingBoard extends StatefulWidget {
 
 class _GroupingBoardState extends State<_GroupingBoard> {
   bool _canDelete(StickyNote note) =>
-      widget.isPresenter || widget.isOwner || note.createdBy == widget.currentUserId;
+      widget.isPresenter ||
+      widget.isOwner ||
+      note.createdBy == widget.currentUserId;
 
   Future<void> _showRenameGroupDialog(StickyNote group) async {
     final controller = TextEditingController(text: group.content);
@@ -3412,7 +3493,8 @@ class _GroupingBoardState extends State<_GroupingBoard> {
     // properly) is treated as ungrouped rather than vanishing from view.
     final ungrouped = widget.notes
         .where((n) =>
-            !n.isGroup && (n.parentId == null || !groupIds.contains(n.parentId)))
+            !n.isGroup &&
+            (n.parentId == null || !groupIds.contains(n.parentId)))
         .toList();
 
     if (groups.isEmpty && ungrouped.isEmpty) {
@@ -3500,8 +3582,7 @@ class _GroupingBoardState extends State<_GroupingBoard> {
   }
 
   Widget _buildGroupColumn(StickyNote group, ColorScheme cs) {
-    final children =
-        widget.notes.where((n) => n.parentId == group.id).toList();
+    final children = widget.notes.where((n) => n.parentId == group.id).toList();
     final (fill, border) = _groupColors(group.id);
     final title = group.content.isEmpty ? 'Untitled group' : group.content;
 
@@ -3711,7 +3792,8 @@ Widget _buildColumn({
                   margin: EdgeInsets.only(top: children.isEmpty ? 0 : 4),
                   height: 44,
                   width: double.infinity,
-                  child: CustomPaint(painter: _DashedRectPainter(color: accent)),
+                  child:
+                      CustomPaint(painter: _DashedRectPainter(color: accent)),
                 ),
             ],
           ),
@@ -3816,7 +3898,8 @@ class _VoteBoardState extends State<_VoteBoard> {
     final total = _totalVotesFor(noteId);
     final filled = total > 0;
     final star = Icon(filled ? Icons.star : Icons.star_border,
-        size: 18, color: filled ? Colors.amber[700] : onColor.withValues(alpha: 0.4));
+        size: 18,
+        color: filled ? Colors.amber[700] : onColor.withValues(alpha: 0.4));
 
     // Only draggable when you have a vote here yourself — you can only
     // move or take back your own star, not one someone else placed.
@@ -3836,7 +3919,8 @@ class _VoteBoardState extends State<_VoteBoard> {
         starWidget,
         const SizedBox(width: 4),
         Text('$total',
-            style: TextStyle(fontSize: 12, color: onColor.withValues(alpha: 0.8))),
+            style:
+                TextStyle(fontSize: 12, color: onColor.withValues(alpha: 0.8))),
       ],
     );
   }
@@ -3862,7 +3946,8 @@ class _VoteBoardState extends State<_VoteBoard> {
                 ? Border.all(color: cs.primary, width: 2)
                 : null,
             boxShadow: const [
-              BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))
+              BoxShadow(
+                  color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))
             ],
           ),
           child: Column(
@@ -3898,7 +3983,8 @@ class _VoteBoardState extends State<_VoteBoard> {
           child: Text(content,
               style: TextStyle(
                   fontSize: 12,
-                  color: ThemeData.estimateBrightnessForColor(_hexColor(note.color)) ==
+                  color: ThemeData.estimateBrightnessForColor(
+                              _hexColor(note.color)) ==
                           Brightness.dark
                       ? Colors.white
                       : Colors.black87),
@@ -3927,12 +4013,16 @@ class _VoteBoardState extends State<_VoteBoard> {
             Icon(Icons.how_to_vote_outlined, size: 18, color: cs.outline),
             const SizedBox(width: 8),
             Text('Your votes',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: cs.onSurface)),
+                style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: cs.onSurface)),
             const SizedBox(width: 12),
             Expanded(
               child: _starsLeft == 0
                   ? Text('All votes placed',
-                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))
+                      style:
+                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant))
                   : Wrap(
                       spacing: 6,
                       runSpacing: 6,
@@ -3940,11 +4030,12 @@ class _VoteBoardState extends State<_VoteBoard> {
                         _starsLeft,
                         (i) => Draggable<_VoteToken>(
                           data: const _VoteToken(),
-                          feedback:
-                              const Icon(Icons.star, size: 28, color: Colors.amber),
-                          childWhenDragging:
-                              Icon(Icons.star_border, size: 24, color: cs.outline),
-                          child: const Icon(Icons.star, size: 24, color: Colors.amber),
+                          feedback: const Icon(Icons.star,
+                              size: 28, color: Colors.amber),
+                          childWhenDragging: Icon(Icons.star_border,
+                              size: 24, color: cs.outline),
+                          child: const Icon(Icons.star,
+                              size: 24, color: Colors.amber),
                         ),
                       ),
                     ),
@@ -3956,8 +4047,7 @@ class _VoteBoardState extends State<_VoteBoard> {
   }
 
   Widget _buildGroupColumn(StickyNote group, ColorScheme cs) {
-    final children =
-        widget.notes.where((n) => n.parentId == group.id).toList();
+    final children = widget.notes.where((n) => n.parentId == group.id).toList();
     final (fill, border) = _groupColors(group.id);
     final title = group.content.isEmpty ? 'Untitled group' : group.content;
 
@@ -3997,9 +4087,8 @@ class _VoteBoardState extends State<_VoteBoard> {
           ),
         ),
       ),
-      children: children
-          .map((n) => _buildReadOnlyChildRow(n, cs, border))
-          .toList(),
+      children:
+          children.map((n) => _buildReadOnlyChildRow(n, cs, border)).toList(),
     );
   }
 
@@ -4010,7 +4099,8 @@ class _VoteBoardState extends State<_VoteBoard> {
     final groupIds = groups.map((g) => g.id).toSet();
     final ungrouped = widget.notes
         .where((n) =>
-            !n.isGroup && (n.parentId == null || !groupIds.contains(n.parentId)))
+            !n.isGroup &&
+            (n.parentId == null || !groupIds.contains(n.parentId)))
         .toList();
 
     final isEmpty = groups.isEmpty && ungrouped.isEmpty;
@@ -4046,11 +4136,13 @@ class _VoteBoardState extends State<_VoteBoard> {
                           cs: cs,
                           title: 'Ungrouped',
                           icon: Icons.sticky_note_2_outlined,
-                          fill: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+                          fill:
+                              cs.surfaceContainerHighest.withValues(alpha: 0.4),
                           accent: cs.outline,
                           count: ungrouped.length,
-                          children:
-                              ungrouped.map((n) => _buildVotableCard(n, cs)).toList(),
+                          children: ungrouped
+                              .map((n) => _buildVotableCard(n, cs))
+                              .toList(),
                         ),
                         for (final g in groups) ...[
                           const SizedBox(width: 16),
@@ -4102,6 +4194,14 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
   final _stackKey = GlobalKey();
   double _matrixLeft = 0, _matrixTop = 0, _matrixW = 1, _matrixH = 1;
   String? _expandedId;
+
+  // Matches the Positioned(left: pos.dx - r, top: pos.dy - r - 10) used to
+  // render each dot below: `pos` (what toScreen/_globalToNormalized deal in)
+  // is defined as the dot's top-left plus this offset. DragTarget always
+  // reports the dropped feedback widget's top-left (regardless of drag
+  // anchor strategy), so this same offset converts that back to `pos`.
+  static const _dotRadius = 18.0;
+  static const _dotTopLeftToPos = Offset(_dotRadius, _dotRadius + 10);
 
   Offset _posFor(String id) => widget.positions[id] ?? const Offset(0.5, 0.5);
 
@@ -4190,8 +4290,7 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
               ],
             ),
           ),
-          if (onBoard)
-            Icon(Icons.push_pin, size: 13, color: cs.primary),
+          if (onBoard) Icon(Icons.push_pin, size: 13, color: cs.primary),
         ],
       ),
     );
@@ -4241,7 +4340,8 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.grid_view_outlined, size: 72, color: cs.onSurfaceVariant),
+            Icon(Icons.grid_view_outlined,
+                size: 72, color: cs.onSurfaceVariant),
             const SizedBox(height: 16),
             Text(
                 widget.voteFilterEnabled
@@ -4275,231 +4375,237 @@ class _CostValueMatrixState extends State<_CostValueMatrix> {
           onAcceptWithDetails: (details) =>
               widget.onRemoveFromMatrix(details.data),
           builder: (context, candidateData, rejectedData) => Container(
-          width: isMobile ? 140 : 220,
-          decoration: BoxDecoration(
-            color: candidateData.isNotEmpty
-                ? cs.primary.withValues(alpha: 0.08)
-                : cs.surface,
-            border: Border(right: BorderSide(color: cs.outline)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-                  children: [
-                    if (placed.isNotEmpty) _sectionHeader('ON BOARD', cs),
-                    ...placed.map((note) => _buildItemRow(note,
-                        isMobile: isMobile, cs: cs, onBoard: true)),
-                    _sectionHeader('ITEMS', cs),
-                    ...unplaced.map(
-                        (note) => _buildItemRow(note, isMobile: isMobile, cs: cs)),
-                  ],
+            width: isMobile ? 140 : 220,
+            decoration: BoxDecoration(
+              color: candidateData.isNotEmpty
+                  ? cs.primary.withValues(alpha: 0.08)
+                  : cs.surface,
+              border: Border(right: BorderSide(color: cs.outline)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                    children: [
+                      if (placed.isNotEmpty) _sectionHeader('ON BOARD', cs),
+                      ...placed.map((note) => _buildItemRow(note,
+                          isMobile: isMobile, cs: cs, onBoard: true)),
+                      _sectionHeader('ITEMS', cs),
+                      ...unplaced.map((note) =>
+                          _buildItemRow(note, isMobile: isMobile, cs: cs)),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
           ),
         ),
         // ── Matrix area ────────────────────────────────────────────────────
         Expanded(
           child: DragTarget<String>(
             onAcceptWithDetails: (details) {
-              final normalized = _globalToNormalized(details.offset);
+              // details.offset is always the dropped feedback widget's
+              // top-left corner. Invert the same (pos -> top-left) formula
+              // used to render the dot so the stored position reproduces
+              // exactly where it was released.
+              final normalized =
+                  _globalToNormalized(details.offset + _dotTopLeftToPos);
               widget.onPositionChanged(details.data, normalized);
             },
             builder: (context, candidateData, rejectedData) =>
                 LayoutBuilder(builder: (context, constraints) {
-            const leftPad = 40.0;
-            const bottomPad = 40.0;
-            const outerPad = 16.0;
-            const matrixLeft = leftPad + outerPad;
-            const matrixTop = outerPad;
-            final matrixRight = constraints.maxWidth - outerPad;
-            final matrixBottom = constraints.maxHeight - bottomPad - outerPad;
-            final matrixW = matrixRight - matrixLeft;
-            final matrixH = matrixBottom - matrixTop;
+              const leftPad = 40.0;
+              const bottomPad = 40.0;
+              const outerPad = 16.0;
+              const matrixLeft = leftPad + outerPad;
+              const matrixTop = outerPad;
+              final matrixRight = constraints.maxWidth - outerPad;
+              final matrixBottom = constraints.maxHeight - bottomPad - outerPad;
+              final matrixW = matrixRight - matrixLeft;
+              final matrixH = matrixBottom - matrixTop;
 
-            _matrixLeft = matrixLeft;
-            _matrixTop = matrixTop;
-            _matrixW = matrixW;
-            _matrixH = matrixH;
+              _matrixLeft = matrixLeft;
+              _matrixTop = matrixTop;
+              _matrixW = matrixW;
+              _matrixH = matrixH;
 
-            Offset toScreen(Offset norm) => Offset(
-                  matrixLeft + norm.dx * matrixW,
-                  matrixTop + (1.0 - norm.dy) * matrixH,
-                );
+              Offset toScreen(Offset norm) => Offset(
+                    matrixLeft + norm.dx * matrixW,
+                    matrixTop + (1.0 - norm.dy) * matrixH,
+                  );
 
-            final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-            return Stack(key: _stackKey, children: [
-              // Background fill
-              Positioned.fill(
-                  child: Container(color: Theme.of(context).scaffoldBackgroundColor)),
-              // Quadrant grid
-              Positioned(
-                left: matrixLeft,
-                top: matrixTop,
-                width: matrixW,
-                height: matrixH,
-                child: CustomPaint(painter: _MatrixPainter(isDark: isDarkMode)),
-              ),
-              // Y-axis label
-              Positioned(
-                left: 0,
-                top: matrixTop,
-                width: leftPad,
-                height: matrixH,
-                child: Center(
-                  child: RotatedBox(
-                    quarterTurns: 3,
-                    child: Text('Value  →',
+              final isDarkMode =
+                  Theme.of(context).brightness == Brightness.dark;
+              return Stack(key: _stackKey, children: [
+                // Background fill
+                Positioned.fill(
+                    child: Container(
+                        color: Theme.of(context).scaffoldBackgroundColor)),
+                // Quadrant grid
+                Positioned(
+                  left: matrixLeft,
+                  top: matrixTop,
+                  width: matrixW,
+                  height: matrixH,
+                  child:
+                      CustomPaint(painter: _MatrixPainter(isDark: isDarkMode)),
+                ),
+                // Y-axis label
+                Positioned(
+                  left: 0,
+                  top: matrixTop,
+                  width: leftPad,
+                  height: matrixH,
+                  child: Center(
+                    child: RotatedBox(
+                      quarterTurns: 3,
+                      child: Text('Value  →',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w500)),
+                    ),
+                  ),
+                ),
+                // X-axis label
+                Positioned(
+                  left: matrixLeft,
+                  top: matrixBottom + 8,
+                  width: matrixW,
+                  height: bottomPad,
+                  child: Center(
+                    child: Text('Cost  →',
                         style: TextStyle(
                             fontSize: 12,
                             color: cs.onSurfaceVariant,
                             fontWeight: FontWeight.w500)),
                   ),
                 ),
-              ),
-              // X-axis label
-              Positioned(
-                left: matrixLeft,
-                top: matrixBottom + 8,
-                width: matrixW,
-                height: bottomPad,
-                child: Center(
-                  child: Text('Cost  →',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurfaceVariant,
-                          fontWeight: FontWeight.w500)),
+                // Axis endpoint labels
+                Positioned(
+                  left: matrixLeft + 4,
+                  top: matrixBottom + 4,
+                  child: Text('Low',
+                      style:
+                          TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
                 ),
-              ),
-              // Axis endpoint labels
-              Positioned(
-                left: matrixLeft + 4,
-                top: matrixBottom + 4,
-                child: Text('Low',
-                    style:
-                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-              ),
-              Positioned(
-                right: outerPad + 4,
-                top: matrixBottom + 4,
-                child: Text('High',
-                    style:
-                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-              ),
-              Positioned(
-                left: 4,
-                top: matrixBottom - 14,
-                child: Text('Low',
-                    style:
-                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-              ),
-              Positioned(
-                left: 4,
-                top: matrixTop + 2,
-                child: Text('High',
-                    style:
-                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-              ),
-              // Quadrant labels
-              Positioned(
-                left: matrixLeft + 10,
-                top: matrixTop + 10,
-                child: _quadrantChip('Quick Wins', Icons.star_outline,
-                    const Color(0xFF2E7D32)),
-              ),
-              Positioned(
-                left: matrixLeft + matrixW / 2 + 10,
-                top: matrixTop + 10,
-                child: _quadrantChip('Strategic', Icons.trending_up,
-                    const Color(0xFF1565C0)),
-              ),
-              Positioned(
-                left: matrixLeft + 10,
-                top: matrixTop + matrixH / 2 + 10,
-                child: _quadrantChip('Fill-ins', Icons.low_priority,
-                    const Color(0xFF6D4C41)),
-              ),
-              Positioned(
-                left: matrixLeft + matrixW / 2 + 10,
-                top: matrixTop + matrixH / 2 + 10,
-                child: _quadrantChip('Time Sinks',
-                    Icons.do_not_disturb_outlined, const Color(0xFFC62828)),
-              ),
-              // Circles
-              ...placed.map((note) {
-                final pos = toScreen(_posFor(note.id));
-                final color = _dotColor(note);
-                const r = 18.0;
-                final isDark =
-                    ThemeData.estimateBrightnessForColor(color) ==
-                        Brightness.dark;
-                final iconColor = isDark ? Colors.white70 : Colors.white;
-                final lockedByOther = widget.lockedBy.containsKey(note.id) &&
-                    widget.lockedBy[note.id] != widget.currentUserId;
+                Positioned(
+                  right: outerPad + 4,
+                  top: matrixBottom + 4,
+                  child: Text('High',
+                      style:
+                          TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                ),
+                Positioned(
+                  left: 4,
+                  top: matrixBottom - 14,
+                  child: Text('Low',
+                      style:
+                          TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                ),
+                Positioned(
+                  left: 4,
+                  top: matrixTop + 2,
+                  child: Text('High',
+                      style:
+                          TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                ),
+                // Quadrant labels
+                Positioned(
+                  left: matrixLeft + 10,
+                  top: matrixTop + 10,
+                  child: _quadrantChip('Quick Wins', Icons.star_outline,
+                      const Color(0xFF2E7D32)),
+                ),
+                Positioned(
+                  left: matrixLeft + matrixW / 2 + 10,
+                  top: matrixTop + 10,
+                  child: _quadrantChip(
+                      'Strategic', Icons.trending_up, const Color(0xFF1565C0)),
+                ),
+                Positioned(
+                  left: matrixLeft + 10,
+                  top: matrixTop + matrixH / 2 + 10,
+                  child: _quadrantChip(
+                      'Fill-ins', Icons.low_priority, const Color(0xFF6D4C41)),
+                ),
+                Positioned(
+                  left: matrixLeft + matrixW / 2 + 10,
+                  top: matrixTop + matrixH / 2 + 10,
+                  child: _quadrantChip('Time Sinks',
+                      Icons.do_not_disturb_outlined, const Color(0xFFC62828)),
+                ),
+                // Circles
+                ...placed.map((note) {
+                  final pos = toScreen(_posFor(note.id));
+                  final color = _dotColor(note);
+                  const r = _dotRadius;
+                  final isDark = ThemeData.estimateBrightnessForColor(color) ==
+                      Brightness.dark;
+                  final iconColor = isDark ? Colors.white70 : Colors.white;
+                  final lockedByOther = widget.lockedBy.containsKey(note.id) &&
+                      widget.lockedBy[note.id] != widget.currentUserId;
 
-                final dotContent = Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: r * 2,
-                      height: r * 2,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: color,
-                        boxShadow: const [
-                          BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 4,
-                              offset: Offset(0, 2))
-                        ],
+                  final dotContent = Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: r * 2,
+                        height: r * 2,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: color,
+                          boxShadow: const [
+                            BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 4,
+                                offset: Offset(0, 2))
+                          ],
+                        ),
+                        child: Center(
+                          child: note.isGroup
+                              ? Icon(Icons.hub_outlined,
+                                  size: 14, color: iconColor)
+                              : Icon(Icons.sticky_note_2_outlined,
+                                  size: 13, color: iconColor),
+                        ),
                       ),
-                      child: Center(
-                        child: note.isGroup
-                            ? Icon(Icons.hub_outlined,
-                                size: 14, color: iconColor)
-                            : Icon(Icons.sticky_note_2_outlined,
-                                size: 13, color: iconColor),
+                      const SizedBox(height: 3),
+                      SizedBox(
+                        width: 72,
+                        child: Text(
+                          note.content.isEmpty ? '—' : note.content,
+                          style: TextStyle(
+                              fontSize: 9, color: cs.onSurfaceVariant),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 3),
-                    SizedBox(
-                      width: 72,
-                      child: Text(
-                        note.content.isEmpty ? '—' : note.content,
-                        style:
-                            TextStyle(fontSize: 9, color: cs.onSurfaceVariant),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                );
+                    ],
+                  );
 
-                return Positioned(
-                  left: pos.dx - r,
-                  top: pos.dy - r - 10,
-                  child: Opacity(
-                    opacity: lockedByOther ? 0.35 : 1.0,
-                    child: Draggable<String>(
-                      data: note.id,
-                      maxSimultaneousDrags: lockedByOther ? 0 : 1,
-                      feedbackOffset: Offset.zero,
-                      onDragStarted: () => widget.onDragStart(note.id),
-                      onDragEnd: (_) => widget.onDragEnd(note.id),
-                      feedback: Opacity(opacity: 0.85, child: dotContent),
-                      childWhenDragging:
-                          Opacity(opacity: 0.3, child: dotContent),
-                      child: dotContent,
+                  return Positioned(
+                    left: pos.dx - r,
+                    top: pos.dy - r - 10,
+                    child: Opacity(
+                      opacity: lockedByOther ? 0.35 : 1.0,
+                      child: Draggable<String>(
+                        data: note.id,
+                        maxSimultaneousDrags: lockedByOther ? 0 : 1,
+                        onDragStarted: () => widget.onDragStart(note.id),
+                        onDragEnd: (_) => widget.onDragEnd(note.id),
+                        feedback: Opacity(opacity: 0.85, child: dotContent),
+                        childWhenDragging:
+                            Opacity(opacity: 0.3, child: dotContent),
+                        child: dotContent,
+                      ),
                     ),
-                  ),
-                );
-              }),
-            ]);
+                  );
+                }),
+              ]);
             }),
           ),
         ),
@@ -4538,27 +4644,26 @@ class _MatrixPainter extends CustomPainter {
     final q2 = isDark ? const Color(0xFF0D2744) : const Color(0xFFE3F2FD);
     final q3 = isDark ? const Color(0xFF2A1F14) : const Color(0xFFFFF8E1);
     final q4 = isDark ? const Color(0xFF3A0F0F) : const Color(0xFFFFEBEE);
-    canvas.drawRect(Rect.fromLTWH(0, 0, half.width, half.height),
-        Paint()..color = q1);
     canvas.drawRect(
-        Rect.fromLTWH(half.width, 0, half.width, half.height),
+        Rect.fromLTWH(0, 0, half.width, half.height), Paint()..color = q1);
+    canvas.drawRect(Rect.fromLTWH(half.width, 0, half.width, half.height),
         Paint()..color = q2);
-    canvas.drawRect(
-        Rect.fromLTWH(0, half.height, half.width, half.height),
+    canvas.drawRect(Rect.fromLTWH(0, half.height, half.width, half.height),
         Paint()..color = q3);
     canvas.drawRect(
         Rect.fromLTWH(half.width, half.height, half.width, half.height),
         Paint()..color = q4);
 
-    final borderColor = isDark ? const Color(0xFF3A3A55) : const Color(0xFFBBBBBB);
+    final borderColor =
+        isDark ? const Color(0xFF3A3A55) : const Color(0xFFBBBBBB);
     final border = Paint()
       ..color = borderColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
-    canvas.drawRect(
-        Rect.fromLTWH(0, 0, size.width, size.height), border);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), border);
 
-    final dividerColor = isDark ? const Color(0xFF555566) : const Color(0xFF999999);
+    final dividerColor =
+        isDark ? const Color(0xFF555566) : const Color(0xFF999999);
     final divider = Paint()
       ..color = dividerColor
       ..style = PaintingStyle.stroke
@@ -4598,8 +4703,7 @@ class _RetroColumnBoard extends StatelessWidget {
   final String currentUserId;
   final void Function(String column, int columnIndex, String content)
       onCreateCard;
-  final void Function(String noteId, String column, int columnIndex)
-      onMoveCard;
+  final void Function(String noteId, String column, int columnIndex) onMoveCard;
   final void Function(String id, String content) onUpdateCard;
 
   const _RetroColumnBoard({
@@ -4620,8 +4724,7 @@ class _RetroColumnBoard extends StatelessWidget {
         title: const Text('New Card'),
         content: TextField(
           controller: ctrl,
-          decoration:
-              const InputDecoration(labelText: 'What\'s on your mind?'),
+          decoration: const InputDecoration(labelText: 'What\'s on your mind?'),
           maxLines: 4,
           autofocus: true,
         ),
@@ -4894,7 +4997,8 @@ class _ActionItemsList extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.checklist_outlined, size: 72, color: cs.onSurfaceVariant),
+            Icon(Icons.checklist_outlined,
+                size: 72, color: cs.onSurfaceVariant),
             const SizedBox(height: 16),
             Text('No action items yet',
                 style: TextStyle(fontSize: 20, color: cs.onSurfaceVariant)),
